@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useCallback, useState } from "react";
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";

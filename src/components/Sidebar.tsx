@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import type { SpatialNode } from "./Viewer3D";
 
