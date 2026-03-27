@@ -17,6 +17,10 @@ const STRUCTURAL_TOOLS: ToolDef[] = [
   { id: "slab", label: "Slab", icon: "S" },
   { id: "beam", label: "Beam", icon: "B" },
   { id: "ceiling", label: "Ceiling", icon: "G" },
+  { id: "roof", label: "Roof", icon: "R" },
+  { id: "stair", label: "Stair", icon: "A" },
+  { id: "railing", label: "Railing", icon: "I" },
+  { id: "curtainWall", label: "Curtain Wall", icon: "K" },
 ];
 
 const OPENING_TOOLS: ToolDef[] = [

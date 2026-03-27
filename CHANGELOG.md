@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Roof element** — pitched roof from two-click rectangular outline with ridge height, thickness, and overhang parameters
+- **Stair element** — stepped geometry between two points with configurable riser height, tread depth, width, and number of risers
+- **Railing element** — posts with top and mid rails along a path (two-click), adjustable height and post spacing
+- **Curtain Wall element** — glass panel grid with aluminum mullions (two-click), parametric panel size and mullion thickness
 - **Window element** — glass pane with frame, snaps to existing walls (with sill height parameter)
 - **Beam element** — horizontal structural member between two points (height/width params)
 - **Ceiling element** — flat panel placed at room height from two-click perimeter (like inverted slab)
