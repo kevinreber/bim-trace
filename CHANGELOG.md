@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Project Browser element selection** — clicking an authored element in the Project Browser tree now selects it, shows its properties in the Properties panel, and flies the 3D camera to it
 
 ### Fixed
-- **Selection highlight offset** — highlight mesh was double-applying transforms (position/rotation + matrixWorld), causing it to appear offset from the selected element; now uses matrixWorld alone for correct placement
+- **Selection highlight offset** — highlight mesh now copies position/rotation/scale directly for scene-root meshes and decomposes matrixWorld for nested IFC children, fixing the offset rendering
+- **Door/window selection inside walls** — raycast now prefers doors and windows over their host wall when both are hit at similar distances, so clicking on a door actually selects the door instead of the wall behind it
 
 ### Changed
 - **Revit-inspired UI redesign** — complete overhaul of the application layout and styling to match Autodesk Revit's UX patterns

@@ -1339,11 +1339,25 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
     const highlightMat = highlightMatRef.current;
     if (highlightMat) {
-      const highlight = new THREE.Mesh(mesh.geometry.clone(), highlightMat);
-      // Use matrixWorld to get the final world-space transform (works for
-      // both root-level authored meshes and nested IFC children).
-      mesh.updateWorldMatrix(true, false);
-      highlight.applyMatrix4(mesh.matrixWorld);
+      const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
+      // Copy transform directly — for scene-root meshes this is the
+      // full transform; for nested IFC children we decompose matrixWorld.
+      if (mesh.parent && mesh.parent !== scene) {
+        // Nested mesh (IFC model child) — decompose world matrix
+        mesh.updateWorldMatrix(true, false);
+        const pos = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const scl = new THREE.Vector3();
+        mesh.matrixWorld.decompose(pos, quat, scl);
+        highlight.position.copy(pos);
+        highlight.quaternion.copy(quat);
+        highlight.scale.copy(scl);
+      } else {
+        // Root-level mesh (authored element) — direct copy
+        highlight.position.copy(mesh.position);
+        highlight.rotation.copy(mesh.rotation);
+        highlight.scale.copy(mesh.scale);
+      }
       highlight.renderOrder = 999;
       scene.add(highlight);
       highlightedRef.current.push(highlight);
@@ -1993,7 +2007,21 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       highlightMesh(null);
 
       if (intersects.length > 0) {
-        const mesh = intersects[0].object as THREE.Mesh;
+        // Prefer doors/windows over their host wall when both are hit
+        // at a similar distance (door is inside the wall geometry).
+        let bestIdx = 0;
+        const bestDist = intersects[0].distance;
+        for (let i = 1; i < intersects.length; i++) {
+          const hit = intersects[i];
+          // Only consider hits within a small tolerance of the closest hit
+          if (hit.distance - bestDist > 0.3) break;
+          const type = (hit.object as THREE.Mesh).userData.type as string | undefined;
+          if (type === "DOOR" || type === "WINDOW") {
+            bestIdx = i;
+            break;
+          }
+        }
+        const mesh = intersects[bestIdx].object as THREE.Mesh;
         highlightMesh(mesh);
 
         const globalId =
