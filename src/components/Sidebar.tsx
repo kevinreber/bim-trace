@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Markup, SelectedElement, SpatialNode } from "@/types";
+import { useMemo, useState } from "react";
+import type { BimElement, Markup, SelectedElement, SpatialNode } from "@/types";
+import ElementEditor from "./ElementEditor";
 import MarkupList from "./MarkupList";
 import PropertyPanel from "./PropertyPanel";
 
@@ -10,6 +11,9 @@ interface SidebarProps {
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
   onMarkupNavigate: (markup: Markup) => void;
   onMarkupLink: (markupId: string) => void;
+  bimElements: BimElement[];
+  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
+  onBimElementDelete: (id: string) => void;
 }
 
 type Tab = "tree" | "properties" | "markups";
@@ -34,6 +38,11 @@ const TYPE_ICONS: Record<string, string> = {
   IFCBEAM: "M",
   IFCSTAIR: "T",
   IFCROOF: "^",
+  // Authored element types
+  wall: "W",
+  column: "C",
+  slab: "S",
+  door: "D",
 };
 
 function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
@@ -94,12 +103,42 @@ export default function Sidebar({
   onMarkupStatusChange,
   onMarkupNavigate,
   onMarkupLink,
+  bimElements,
+  onBimElementUpdate,
+  onBimElementDelete,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>("tree");
 
   const linkedCount = selectedElement
     ? markups.filter((m) => m.linkedBimGuid === selectedElement.globalId).length
     : 0;
+
+  // Build authored elements into a spatial-tree-compatible structure
+  const authoredTree: SpatialNode[] = useMemo(() => {
+    if (bimElements.length === 0) return [];
+    const byType = new Map<string, BimElement[]>();
+    for (const el of bimElements) {
+      const list = byType.get(el.type) ?? [];
+      list.push(el);
+      byType.set(el.type, list);
+    }
+    return Array.from(byType.entries()).map(([type, elements]) => ({
+      expressID: 0,
+      type,
+      name: `${type.charAt(0).toUpperCase() + type.slice(1)}s`,
+      children: elements.map((el) => ({
+        expressID: 0,
+        type: el.type,
+        name: el.name,
+        children: [],
+      })),
+    }));
+  }, [bimElements]);
+
+  // Check if selected element is an authored BIM element
+  const selectedBimElement = bimElements.find(
+    (el) => el.id === selectedElement?.globalId,
+  );
 
   return (
     <aside className="w-80 h-full bg-[var(--sidebar-bg)] border-r border-[var(--border)] flex flex-col shrink-0">
@@ -136,15 +175,16 @@ export default function Sidebar({
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "tree" &&
-          (tree.length === 0 ? (
+          (tree.length === 0 && bimElements.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <p className="text-slate-500 text-sm">No model loaded</p>
               <p className="text-slate-600 text-xs mt-1">
-                Drop an .ifc file onto the 3D viewer
+                Drop an .ifc file or use the Create toolbar
               </p>
             </div>
           ) : (
             <div className="py-1">
+              {/* IFC model tree */}
               {tree.map((node, idx) => (
                 <TreeNode
                   key={node.expressID || `root-${idx}`}
@@ -152,13 +192,42 @@ export default function Sidebar({
                   depth={0}
                 />
               ))}
+
+              {/* Authored elements */}
+              {authoredTree.length > 0 && (
+                <>
+                  {tree.length > 0 && (
+                    <div className="mx-2 my-1 border-t border-slate-700/50" />
+                  )}
+                  <div className="px-2 py-1">
+                    <span className="text-[10px] text-green-500 uppercase tracking-wider font-medium">
+                      Authored Elements
+                    </span>
+                  </div>
+                  {authoredTree.map((node) => (
+                    <TreeNode
+                      key={`authored-${node.type}`}
+                      node={node}
+                      depth={0}
+                    />
+                  ))}
+                </>
+              )}
             </div>
           ))}
 
         {activeTab === "properties" && (
           <div>
-            <PropertyPanel element={selectedElement} />
-            {/* Trace Engine: show linked markups for selected element */}
+            {selectedBimElement ? (
+              <ElementEditor
+                element={selectedBimElement}
+                onUpdate={onBimElementUpdate}
+                onDelete={onBimElementDelete}
+              />
+            ) : (
+              <PropertyPanel element={selectedElement} />
+            )}
+            {/* Trace Engine: linked markups */}
             {selectedElement && linkedCount > 0 && (
               <div className="border-t border-slate-700/50 mt-2">
                 <div className="px-3 py-2">
@@ -194,9 +263,14 @@ export default function Sidebar({
       </div>
 
       {/* Footer */}
-      {activeTab === "tree" && tree.length > 0 && (
-        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500">
-          {countNodes(tree)} elements
+      {activeTab === "tree" && (tree.length > 0 || bimElements.length > 0) && (
+        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500 flex items-center justify-between">
+          <span>{countNodes(tree)} imported</span>
+          {bimElements.length > 0 && (
+            <span className="text-green-500">
+              {bimElements.length} authored
+            </span>
+          )}
         </div>
       )}
       {activeTab === "markups" && markups.length > 0 && (

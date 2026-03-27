@@ -31,3 +31,38 @@ export type AnnotationTool = "select" | "cloud" | "arrow" | "callout" | "text";
 export interface Viewer3DHandle {
   flyToElement: (globalId: string) => void;
 }
+
+// ── BIM Authoring ──────────────────────────────────────────────
+
+export type BimElementType = "wall" | "column" | "slab" | "door";
+
+export type CreationTool = "none" | BimElementType;
+
+export interface BimElementParams {
+  wall: { height: number; thickness: number };
+  column: { height: number; radius: number };
+  slab: { thickness: number };
+  door: { height: number; width: number };
+}
+
+export interface BimElement {
+  id: string;
+  type: BimElementType;
+  name: string;
+  /** Start point on the ground plane (world coords) */
+  start: { x: number; z: number };
+  /** End point — used by wall and slab; same as start for column/door */
+  end: { x: number; z: number };
+  /** Parametric dimensions */
+  params: BimElementParams[BimElementType];
+  /** Floor level (Y offset) */
+  level: number;
+}
+
+/** Default parametric values for each element type */
+export const DEFAULT_PARAMS: BimElementParams = {
+  wall: { height: 3, thickness: 0.2 },
+  column: { height: 3, radius: 0.15 },
+  slab: { thickness: 0.25 },
+  door: { height: 2.1, width: 0.9 },
+};

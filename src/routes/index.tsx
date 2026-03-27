@@ -2,16 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotationToolbar from "@/components/AnnotationToolbar";
+import CreationToolbar from "@/components/CreationToolbar";
 import PdfViewer from "@/components/PdfViewer";
 import Sidebar from "@/components/Sidebar";
 import Viewer3D from "@/components/Viewer3D";
 import type {
   AnnotationTool,
+  BimElement,
+  CreationTool,
   Markup,
   SelectedElement,
   SpatialNode,
   Viewer3DHandle,
 } from "@/types";
+import { DEFAULT_PARAMS } from "@/types";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -30,6 +34,10 @@ function Home() {
   const [hasPdf, setHasPdf] = useState(false);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewer3DRef = useRef<Viewer3DHandle>(null);
+
+  // BIM authoring state
+  const [creationTool, setCreationTool] = useState<CreationTool>("none");
+  const [bimElements, setBimElements] = useState<BimElement[]>([]);
 
   const handleModelLoaded = useCallback((spatialTree: SpatialNode[]) => {
     setTree(spatialTree);
@@ -68,22 +76,18 @@ function Home() {
     [],
   );
 
-  /** Trace Engine: fly the 3D camera to a markup's linked element */
   const handleMarkupNavigate = useCallback((markup: Markup) => {
     if (!markup.linkedBimGuid) return;
     viewer3DRef.current?.flyToElement(markup.linkedBimGuid);
-    // Switch to split or 3D view if currently in 2D-only mode
     setViewMode((prev) => (prev === "2d" ? "split" : prev));
   }, []);
 
-  /** Trace Engine: link/unlink a markup to the currently selected 3D element */
   const handleMarkupLink = useCallback(
     (markupId: string) => {
       setMarkups((prev) =>
         prev.map((m) => {
           if (m.id !== markupId) return m;
           if (m.linkedBimGuid) {
-            // Unlink
             return {
               ...m,
               linkedBimGuid: undefined,
@@ -91,7 +95,6 @@ function Home() {
             };
           }
           if (selectedElement) {
-            // Link to currently selected element
             return {
               ...m,
               linkedBimGuid: selectedElement.globalId,
@@ -105,6 +108,25 @@ function Home() {
     [selectedElement],
   );
 
+  // BIM authoring callbacks
+  const handleElementCreated = useCallback((element: BimElement) => {
+    setBimElements((prev) => [...prev, element]);
+  }, []);
+
+  const handleBimElementUpdate = useCallback(
+    (id: string, updates: Partial<BimElement>) => {
+      setBimElements((prev) =>
+        prev.map((el) => (el.id === id ? { ...el, ...updates } : el)),
+      );
+    },
+    [],
+  );
+
+  const handleBimElementDelete = useCallback((id: string) => {
+    setBimElements((prev) => prev.filter((el) => el.id !== id));
+    setSelectedElement((prev) => (prev?.globalId === id ? null : prev));
+  }, []);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar
@@ -114,6 +136,9 @@ function Home() {
         onMarkupStatusChange={handleMarkupStatusChange}
         onMarkupNavigate={handleMarkupNavigate}
         onMarkupLink={handleMarkupLink}
+        bimElements={bimElements}
+        onBimElementUpdate={handleBimElementUpdate}
+        onBimElementDelete={handleBimElementDelete}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -135,11 +160,19 @@ function Home() {
               </button>
             ))}
           </div>
-          {hasPdf && (
-            <span className="text-[10px] text-slate-500">
-              Page {currentPage}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {bimElements.length > 0 && (
+              <span className="text-[10px] text-green-500">
+                {bimElements.length} element
+                {bimElements.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {hasPdf && (
+              <span className="text-[10px] text-slate-500">
+                Page {currentPage}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Main content area */}
@@ -147,12 +180,20 @@ function Home() {
           {/* 3D Viewer */}
           {(viewMode === "split" || viewMode === "3d") && (
             <div
-              className={`${viewMode === "split" ? "w-1/2 border-r border-slate-700" : "flex-1"} h-full`}
+              className={`${viewMode === "split" ? "w-1/2 border-r border-slate-700" : "flex-1"} h-full relative`}
             >
+              <CreationToolbar
+                activeTool={creationTool}
+                onToolChange={setCreationTool}
+              />
               <Viewer3D
                 ref={viewer3DRef}
                 onModelLoaded={handleModelLoaded}
                 onElementSelected={handleElementSelected}
+                creationTool={creationTool}
+                onElementCreated={handleElementCreated}
+                bimElements={bimElements}
+                defaultParams={DEFAULT_PARAMS}
               />
             </div>
           )}
