@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Selection highlight offset** — highlight mesh now copies position/rotation/scale directly for scene-root meshes and decomposes matrixWorld for nested IFC children, fixing the offset rendering
 - **Door/window selection inside walls** — raycast now prefers doors and windows over their host wall when both are hit at similar distances, so clicking on a door actually selects the door instead of the wall behind it
 
+### Docs
+- **CLAUDE.md rewrite** — updated development guide to reflect the Revit-style architecture: ribbon toolbar, Project Browser/Properties panels, wall boolean system, element selection flow, and keyboard shortcuts reference
+
 ### Changed
 - **Revit-inspired UI redesign** — complete overhaul of the application layout and styling to match Autodesk Revit's UX patterns
 - **Ribbon toolbar** — replaced flat creation toolbar with a tabbed ribbon (Modify, Architecture, Annotate, View tabs) featuring SVG icons and grouped tool panels like Revit
