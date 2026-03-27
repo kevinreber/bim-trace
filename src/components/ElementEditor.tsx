@@ -1,4 +1,9 @@
+import { useState } from "react";
 import type { BimElement, BimElementType } from "@/types";
+
+/* ------------------------------------------------------------------ */
+/*  Revit-style Property Grid for authored BIM elements                */
+/* ------------------------------------------------------------------ */
 
 interface ElementEditorProps {
   element: BimElement;
@@ -9,7 +14,7 @@ interface ElementEditorProps {
 const TYPE_LABELS: Record<BimElementType, string> = {
   wall: "Wall",
   column: "Column",
-  slab: "Slab",
+  slab: "Floor",
   door: "Door",
   window: "Window",
   beam: "Beam",
@@ -277,100 +282,256 @@ export default function ElementEditor({
 }: ElementEditorProps) {
   const fields = PARAM_FIELDS[element.type];
   const params = element.params as Record<string, number>;
+  const [expandedSections, setExpandedSections] = useState({
+    identity: true,
+    dimensions: true,
+    constraints: true,
+    location: true,
+  });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
 
   return (
-    <div className="flex flex-col gap-3 p-3">
-      {/* Header */}
-      <div className="bg-green-900/30 border border-green-800/40 rounded-lg p-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-white font-medium text-sm">{element.name}</p>
-            <p className="text-green-400 text-xs mt-0.5">
-              {TYPE_LABELS[element.type]}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onDelete(element.id)}
-            className="px-2 py-1 rounded text-[10px] text-red-400 hover:bg-red-500/15 transition-colors"
-            title="Delete element"
+    <div className="prop-grid animate-fade-in">
+      {/* Type selector area (like Revit's type selector at top of Properties) */}
+      <div className="properties-type-selector">
+        <span className="properties-type-badge">
+          {TYPE_LABELS[element.type]}
+        </span>
+        <button
+          type="button"
+          onClick={() => onDelete(element.id)}
+          className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors"
+          style={{ color: "#ef4444" }}
+          title="Delete element"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="w-3 h-3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
           >
-            Delete
-          </button>
-        </div>
+            <path d="M3 4 L13 4 M5 4 L5 2 L11 2 L11 4 M4 4 L4 14 L12 14 L12 4" />
+            <line x1="7" y1="7" x2="7" y2="11" />
+            <line x1="9" y1="7" x2="9" y2="11" />
+          </svg>
+          Delete
+        </button>
       </div>
 
-      {/* Name */}
-      <div className="space-y-1">
-        <label className="text-xs text-slate-400 font-medium px-1">
-          Name
-          <input
-            type="text"
-            value={element.name}
-            onChange={(e) => onUpdate(element.id, { name: e.target.value })}
-            className="mt-1 block w-full px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600 text-sm text-white focus:outline-none focus:border-blue-500"
-          />
-        </label>
+      {/* Identity Data section */}
+      <div className="prop-section">
+        <button
+          type="button"
+          className="prop-section-header"
+          onClick={() => toggleSection("identity")}
+        >
+          <span className="text-[8px]">
+            {expandedSections.identity ? "▼" : "▶"}
+          </span>
+          Identity Data
+        </button>
+        {expandedSections.identity && (
+          <>
+            <div className="prop-row">
+              <span className="prop-label">Name</span>
+              <div className="prop-value">
+                <input
+                  type="text"
+                  value={element.name}
+                  onChange={(e) =>
+                    onUpdate(element.id, { name: e.target.value })
+                  }
+                  className="prop-input"
+                />
+              </div>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">Type</span>
+              <div className="prop-value">
+                <span
+                  className="prop-input"
+                  style={{ background: "none", color: "var(--text-muted)" }}
+                >
+                  {TYPE_LABELS[element.type]}
+                </span>
+              </div>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">ID</span>
+              <div className="prop-value">
+                <span
+                  className="text-[10px]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {element.id.slice(0, 8)}...
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Parameters */}
-      <div className="space-y-2">
-        <p className="text-xs text-slate-400 font-medium px-1">Parameters</p>
-        {fields.map((field) => (
-          <div key={field.key} className="flex items-center gap-2 px-1">
-            <span className="text-xs text-slate-400 w-20 shrink-0">
-              {field.label}
-            </span>
-            <input
-              type="number"
-              value={params[field.key]}
-              min={field.min}
-              max={field.max}
-              step={field.step}
-              onChange={(e) => {
-                const val = Number.parseFloat(e.target.value);
-                if (Number.isNaN(val)) return;
-                onUpdate(element.id, {
-                  params: { ...element.params, [field.key]: val },
-                });
-              }}
-              className="flex-1 px-2 py-1 rounded bg-slate-700/50 border border-slate-600 text-sm text-white text-right focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            <span className="text-[10px] text-slate-500 w-5">{field.unit}</span>
+      {/* Dimensions section */}
+      <div className="prop-section">
+        <button
+          type="button"
+          className="prop-section-header"
+          onClick={() => toggleSection("dimensions")}
+        >
+          <span className="text-[8px]">
+            {expandedSections.dimensions ? "▼" : "▶"}
+          </span>
+          Dimensions
+        </button>
+        {expandedSections.dimensions &&
+          fields.map((field) => (
+            <div key={field.key} className="prop-row">
+              <span className="prop-label">{field.label}</span>
+              <div className="prop-value flex items-center">
+                <input
+                  type="number"
+                  value={params[field.key]}
+                  min={field.min}
+                  max={field.max}
+                  step={field.step}
+                  onChange={(e) => {
+                    const val = Number.parseFloat(e.target.value);
+                    if (Number.isNaN(val)) return;
+                    onUpdate(element.id, {
+                      params: { ...element.params, [field.key]: val },
+                    });
+                  }}
+                  className="prop-input"
+                />
+                <span className="prop-unit">{field.unit}</span>
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {/* Constraints section */}
+      <div className="prop-section">
+        <button
+          type="button"
+          className="prop-section-header"
+          onClick={() => toggleSection("constraints")}
+        >
+          <span className="text-[8px]">
+            {expandedSections.constraints ? "▼" : "▶"}
+          </span>
+          Constraints
+        </button>
+        {expandedSections.constraints && (
+          <div className="prop-row">
+            <span className="prop-label">Base Level</span>
+            <div className="prop-value flex items-center">
+              <input
+                type="number"
+                value={element.level}
+                min={0}
+                max={100}
+                step={0.1}
+                onChange={(e) => {
+                  const val = Number.parseFloat(e.target.value);
+                  if (Number.isNaN(val)) return;
+                  onUpdate(element.id, { level: val });
+                }}
+                className="prop-input"
+              />
+              <span className="prop-unit">m</span>
+            </div>
           </div>
-        ))}
+        )}
       </div>
 
-      {/* Level */}
-      <div className="flex items-center gap-2 px-1">
-        <span className="text-xs text-slate-400 w-20 shrink-0">Level</span>
-        <input
-          type="number"
-          value={element.level}
-          min={0}
-          max={100}
-          step={0.1}
-          onChange={(e) => {
-            const val = Number.parseFloat(e.target.value);
-            if (Number.isNaN(val)) return;
-            onUpdate(element.id, { level: val });
-          }}
-          className="flex-1 px-2 py-1 rounded bg-slate-700/50 border border-slate-600 text-sm text-white text-right focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <span className="text-[10px] text-slate-500 w-5">m</span>
-      </div>
-
-      {/* Position info (read-only) */}
-      <div className="space-y-1 mt-1">
-        <p className="text-xs text-slate-400 font-medium px-1">Position</p>
-        <div className="grid grid-cols-2 gap-1 px-1 text-[10px]">
-          <span className="text-slate-500">
-            Start: ({element.start.x.toFixed(1)}, {element.start.z.toFixed(1)})
+      {/* Location section (read-only, like Revit) */}
+      <div className="prop-section">
+        <button
+          type="button"
+          className="prop-section-header"
+          onClick={() => toggleSection("location")}
+        >
+          <span className="text-[8px]">
+            {expandedSections.location ? "▼" : "▶"}
           </span>
-          <span className="text-slate-500">
-            End: ({element.end.x.toFixed(1)}, {element.end.z.toFixed(1)})
-          </span>
-        </div>
+          Location
+        </button>
+        {expandedSections.location && (
+          <>
+            <div className="prop-row">
+              <span className="prop-label">Start X</span>
+              <div className="prop-value">
+                <span
+                  className="prop-input"
+                  style={{
+                    background: "none",
+                    color: "var(--text-muted)",
+                    textAlign: "right",
+                    display: "block",
+                  }}
+                >
+                  {element.start.x.toFixed(2)}
+                </span>
+              </div>
+              <span className="prop-unit">m</span>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">Start Z</span>
+              <div className="prop-value">
+                <span
+                  className="prop-input"
+                  style={{
+                    background: "none",
+                    color: "var(--text-muted)",
+                    textAlign: "right",
+                    display: "block",
+                  }}
+                >
+                  {element.start.z.toFixed(2)}
+                </span>
+              </div>
+              <span className="prop-unit">m</span>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">End X</span>
+              <div className="prop-value">
+                <span
+                  className="prop-input"
+                  style={{
+                    background: "none",
+                    color: "var(--text-muted)",
+                    textAlign: "right",
+                    display: "block",
+                  }}
+                >
+                  {element.end.x.toFixed(2)}
+                </span>
+              </div>
+              <span className="prop-unit">m</span>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">End Z</span>
+              <div className="prop-value">
+                <span
+                  className="prop-input"
+                  style={{
+                    background: "none",
+                    color: "var(--text-muted)",
+                    textAlign: "right",
+                    display: "block",
+                  }}
+                >
+                  {element.end.z.toFixed(2)}
+                </span>
+              </div>
+              <span className="prop-unit">m</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

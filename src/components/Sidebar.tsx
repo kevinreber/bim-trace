@@ -10,30 +10,38 @@ import ElementEditor from "./ElementEditor";
 import MarkupList from "./MarkupList";
 import PropertyPanel from "./PropertyPanel";
 
-interface SidebarProps {
+/* ------------------------------------------------------------------ */
+/*  Revit-style dual panels:                                           */
+/*  Left  = Project Browser (tree + markups + levels)                  */
+/*  Right = Properties (element editor / IFC properties)               */
+/* ------------------------------------------------------------------ */
+
+interface ProjectBrowserProps {
   tree: SpatialNode[];
-  selectedElement: SelectedElement | null;
+  bimElements: BimElement[];
   markups: Markup[];
+  selectedElement: SelectedElement | null;
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
   onMarkupNavigate: (markup: Markup) => void;
   onMarkupLink: (markupId: string) => void;
-  bimElements: BimElement[];
-  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
-  onBimElementDelete: (id: string) => void;
   levels: Level[];
   activeLevel: string;
-  onActiveLevelChange: (levelId: string) => void;
+  onActiveLevelChange: (id: string) => void;
   onLevelsChange: (levels: Level[]) => void;
 }
 
-type Tab = "tree" | "properties" | "markups" | "levels";
+interface PropertiesPanelProps {
+  selectedElement: SelectedElement | null;
+  bimElements: BimElement[];
+  markups: Markup[];
+  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
+  onBimElementDelete: (id: string) => void;
+  onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
+  onMarkupNavigate: (markup: Markup) => void;
+  onMarkupLink: (markupId: string) => void;
+}
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "tree", label: "Tree" },
-  { id: "properties", label: "Properties" },
-  { id: "markups", label: "Markups" },
-  { id: "levels", label: "Levels" },
-];
+/* ── Tree Node (Revit Project Browser style) ──────────────────────── */
 
 const TYPE_ICONS: Record<string, string> = {
   IFCSITE: "G",
@@ -49,7 +57,6 @@ const TYPE_ICONS: Record<string, string> = {
   IFCBEAM: "M",
   IFCSTAIR: "T",
   IFCROOF: "^",
-  // Authored element types
   wall: "W",
   column: "C",
   slab: "S",
@@ -57,6 +64,10 @@ const TYPE_ICONS: Record<string, string> = {
   window: "N",
   beam: "B",
   ceiling: "G",
+  roof: "^",
+  stair: "A",
+  railing: "I",
+  curtainWall: "K",
   table: "T",
   chair: "H",
   shelving: "L",
@@ -72,38 +83,27 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const icon = TYPE_ICONS[node.type] || "*";
-  const shortType = node.type.replace("IFC", "");
 
   return (
     <div>
       <button
         type="button"
         onClick={() => hasChildren && setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-slate-700/50 rounded transition-colors group"
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        className="tree-node-btn"
+        style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
         {hasChildren ? (
-          <span
-            className={`text-xs text-slate-500 transition-transform ${
-              expanded ? "rotate-90" : ""
-            }`}
-          >
+          <span className={`tree-node-expand ${expanded ? "open" : ""}`}>
             ▶
           </span>
         ) : (
-          <span className="text-xs text-transparent">▶</span>
+          <span className="tree-node-expand" style={{ visibility: "hidden" }}>
+            ▶
+          </span>
         )}
-        <span className="w-4 h-4 flex items-center justify-center rounded bg-slate-700/60 text-[9px] font-mono font-bold text-slate-400 shrink-0">
-          {icon}
-        </span>
-        <span className="truncate flex-1 text-slate-300 group-hover:text-white">
-          {node.name}
-        </span>
-        <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
-          {shortType}
-        </span>
+        <span className="tree-node-icon">{icon}</span>
+        <span className="truncate flex-1">{node.name}</span>
       </button>
-
       {expanded && hasChildren && (
         <div>
           {node.children.map((child, idx) => (
@@ -118,6 +118,8 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
     </div>
   );
 }
+
+/* ── Level Manager (Revit-style) ──────────────────────────────────── */
 
 function LevelManager({
   levels,
@@ -166,35 +168,45 @@ function LevelManager({
   };
 
   return (
-    <div className="flex flex-col gap-1 p-2">
+    <div className="flex flex-col">
       {levels
         .sort((a, b) => b.height - a.height)
         .map((level) => (
-          <div
-            key={level.id}
-            className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-              activeLevel === level.id
-                ? "bg-blue-900/30 border border-blue-800/40"
-                : "hover:bg-slate-700/30"
-            }`}
-          >
+          <div key={level.id} className="prop-row" style={{ minHeight: 30 }}>
             <button
               type="button"
               onClick={() => toggleVisibility(level.id)}
-              className={`text-xs w-5 h-5 flex items-center justify-center rounded ${
-                level.visible
-                  ? "text-blue-400 bg-blue-500/15"
-                  : "text-slate-500 bg-slate-700/30"
-              }`}
+              className="flex items-center justify-center w-6 shrink-0 ml-2"
+              style={{
+                color: level.visible
+                  ? "var(--accent-blue)"
+                  : "var(--text-muted)",
+              }}
               title={level.visible ? "Hide level" : "Show level"}
             >
-              {level.visible ? "V" : "H"}
+              <svg
+                viewBox="0 0 16 16"
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                {level.visible ? (
+                  <path d="M1 8 Q8 2 15 8 Q8 14 1 8 M8 6 A2 2 0 1 1 8 10 A2 2 0 1 1 8 6" />
+                ) : (
+                  <>
+                    <path d="M1 8 Q8 2 15 8 Q8 14 1 8" />
+                    <line x1="2" y1="2" x2="14" y2="14" />
+                  </>
+                )}
+              </svg>
             </button>
 
             <button
               type="button"
               onClick={() => onActiveLevelChange(level.id)}
-              className="flex-1 text-left"
+              onDoubleClick={() => setEditingId(level.id)}
+              className="flex-1 text-left px-2"
             >
               {editingId === level.id ? (
                 <input
@@ -205,16 +217,22 @@ function LevelManager({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") setEditingId(null);
                   }}
-                  className="bg-slate-700/50 border border-slate-600 rounded px-1 py-0.5 text-xs text-white w-full focus:outline-none focus:border-blue-500"
+                  className="prop-input"
+                  style={{ width: "100%" }}
                 />
               ) : (
-                <button
-                  type="button"
-                  className={`text-xs text-left ${activeLevel === level.id ? "text-blue-300 font-medium" : "text-slate-300"}`}
-                  onDoubleClick={() => setEditingId(level.id)}
+                <span
+                  className="text-[11px]"
+                  style={{
+                    color:
+                      activeLevel === level.id
+                        ? "var(--accent-blue)"
+                        : "var(--text-secondary)",
+                    fontWeight: activeLevel === level.id ? 600 : 400,
+                  }}
                 >
                   {level.name}
-                </button>
+                </span>
               )}
             </button>
 
@@ -226,17 +244,28 @@ function LevelManager({
                 const val = Number.parseFloat(e.target.value);
                 if (!Number.isNaN(val)) updateLevelHeight(level.id, val);
               }}
-              className="w-14 px-1 py-0.5 rounded text-[10px] bg-slate-700/50 border border-slate-600 text-right text-slate-300 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="prop-input"
+              style={{ width: 52, textAlign: "right" }}
             />
-            <span className="text-[9px] text-slate-500">m</span>
+            <span className="prop-unit">m</span>
 
             <button
               type="button"
               onClick={() => removeLevel(level.id)}
-              className="text-[10px] text-slate-500 hover:text-red-400 transition-colors px-1"
+              className="px-2 flex items-center justify-center"
+              style={{ color: "var(--text-muted)" }}
               title="Remove level"
             >
-              x
+              <svg
+                viewBox="0 0 16 16"
+                className="w-3 h-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <line x1="4" y1="4" x2="12" y2="12" />
+                <line x1="12" y1="4" x2="4" y2="12" />
+              </svg>
             </button>
           </div>
         ))}
@@ -244,36 +273,44 @@ function LevelManager({
       <button
         type="button"
         onClick={addLevel}
-        className="mt-1 px-2 py-1.5 rounded text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors border border-dashed border-slate-600"
+        className="tree-node-btn"
+        style={{ color: "var(--accent-blue)", padding: "6px 10px" }}
       >
-        + Add Level
+        <svg
+          viewBox="0 0 16 16"
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <line x1="8" y1="3" x2="8" y2="13" />
+          <line x1="3" y1="8" x2="13" y2="8" />
+        </svg>
+        <span className="text-[11px]">Add Level</span>
       </button>
     </div>
   );
 }
 
-export default function Sidebar({
+/* ── Project Browser (left panel) ─────────────────────────────────── */
+
+type BrowserTab = "tree" | "markups" | "levels";
+
+export function ProjectBrowser({
   tree,
-  selectedElement,
+  bimElements,
   markups,
+  selectedElement,
   onMarkupStatusChange,
   onMarkupNavigate,
   onMarkupLink,
-  bimElements,
-  onBimElementUpdate,
-  onBimElementDelete,
   levels,
   activeLevel,
   onActiveLevelChange,
   onLevelsChange,
-}: SidebarProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("tree");
+}: ProjectBrowserProps) {
+  const [activeTab, setActiveTab] = useState<BrowserTab>("tree");
 
-  const linkedCount = selectedElement
-    ? markups.filter((m) => m.linkedBimGuid === selectedElement.globalId).length
-    : 0;
-
-  // Build authored elements into a spatial-tree-compatible structure
   const authoredTree: SpatialNode[] = useMemo(() => {
     if (bimElements.length === 0) return [];
     const byType = new Map<string, BimElement[]>();
@@ -295,56 +332,51 @@ export default function Sidebar({
     }));
   }, [bimElements]);
 
-  // Check if selected element is an authored BIM element
-  const selectedBimElement = bimElements.find(
-    (el) => el.id === selectedElement?.globalId,
-  );
-
   return (
-    <aside className="w-80 h-full bg-[var(--sidebar-bg)] border-r border-[var(--border)] flex flex-col shrink-0">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-[var(--border)]">
-        <h1 className="text-base font-bold text-white tracking-tight">
-          BIM Trace
-        </h1>
+    <div className="browser-panel">
+      <div className="browser-header">
+        <span>Project Browser</span>
+        <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
+          {countNodes(tree) + bimElements.length} items
+        </span>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[var(--border)]">
-        {TABS.map((tab) => (
+      <div className="browser-tabs">
+        {(
+          [
+            { id: "tree", label: "Elements" },
+            {
+              id: "markups",
+              label: `Markups${markups.length > 0 ? ` (${markups.length})` : ""}`,
+            },
+            { id: "levels", label: "Levels" },
+          ] as { id: BrowserTab; label: string }[]
+        ).map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === tab.id
-                ? "text-blue-400 border-b-2 border-blue-400 bg-slate-800/50"
-                : "text-slate-400 hover:text-slate-300 hover:bg-slate-800/30"
-            }`}
+            className={`browser-tab ${activeTab === tab.id ? "active" : ""}`}
           >
             {tab.label}
-            {tab.id === "markups" && markups.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px]">
-                {markups.length}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "tree" &&
           (tree.length === 0 && bimElements.length === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <p className="text-slate-500 text-sm">No model loaded</p>
-              <p className="text-slate-600 text-xs mt-1">
-                Drop an .ifc file or use the Create toolbar
+            <div
+              className="p-4 text-center"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <p className="text-[11px]">No model loaded</p>
+              <p className="text-[10px] mt-1">
+                Drop an .ifc file or use Architecture tools
               </p>
             </div>
           ) : (
-            <div className="py-1">
-              {/* IFC model tree */}
+            <div className="py-0.5">
               {tree.map((node, idx) => (
                 <TreeNode
                   key={node.expressID || `root-${idx}`}
@@ -352,17 +384,22 @@ export default function Sidebar({
                   depth={0}
                 />
               ))}
-
-              {/* Authored elements */}
               {authoredTree.length > 0 && (
                 <>
                   {tree.length > 0 && (
-                    <div className="mx-2 my-1 border-t border-slate-700/50" />
+                    <div
+                      style={{
+                        borderTop: "1px solid var(--border)",
+                        margin: "4px 0",
+                      }}
+                    />
                   )}
-                  <div className="px-2 py-1">
-                    <span className="text-[10px] text-green-500 uppercase tracking-wider font-medium">
-                      Authored Elements
-                    </span>
+                  <div
+                    className="prop-section-header"
+                    style={{ cursor: "default" }}
+                  >
+                    <span className="status-dot green" />
+                    Authored Elements
                   </div>
                   {authoredTree.map((node) => (
                     <TreeNode
@@ -375,41 +412,6 @@ export default function Sidebar({
               )}
             </div>
           ))}
-
-        {activeTab === "properties" && (
-          <div>
-            {selectedBimElement ? (
-              <ElementEditor
-                element={selectedBimElement}
-                onUpdate={onBimElementUpdate}
-                onDelete={onBimElementDelete}
-              />
-            ) : (
-              <PropertyPanel element={selectedElement} />
-            )}
-            {/* Trace Engine: linked markups */}
-            {selectedElement && linkedCount > 0 && (
-              <div className="border-t border-slate-700/50 mt-2">
-                <div className="px-3 py-2">
-                  <p className="text-xs font-medium text-slate-400">
-                    Linked Markups
-                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px]">
-                      {linkedCount}
-                    </span>
-                  </p>
-                </div>
-                <MarkupList
-                  markups={markups}
-                  onStatusChange={onMarkupStatusChange}
-                  onNavigate={onMarkupNavigate}
-                  onLink={onMarkupLink}
-                  selectedElement={selectedElement}
-                  filterByGuid={selectedElement.globalId}
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         {activeTab === "markups" && (
           <MarkupList
@@ -431,29 +433,141 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Footer */}
-      {activeTab === "tree" && (tree.length > 0 || bimElements.length > 0) && (
-        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500 flex items-center justify-between">
-          <span>{countNodes(tree)} imported</span>
+      {/* Footer status */}
+      <div
+        className="status-bar"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        <div className="status-bar-section">
           {bimElements.length > 0 && (
-            <span className="text-green-500">
+            <span className="status-indicator">
+              <span className="status-dot green" />
               {bimElements.length} authored
             </span>
           )}
+          {markups.filter((m) => m.status === "open").length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot" style={{ background: "#ef4444" }} />
+              {markups.filter((m) => m.status === "open").length} open
+            </span>
+          )}
         </div>
-      )}
-      {activeTab === "markups" && markups.length > 0 && (
-        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500 flex items-center justify-between">
-          <span>
-            {markups.filter((m) => m.status === "open").length} open /{" "}
-            {markups.length} total
-          </span>
-          <span className="text-slate-600">
-            {markups.filter((m) => m.linkedBimGuid).length} linked
-          </span>
-        </div>
-      )}
-    </aside>
+      </div>
+    </div>
+  );
+}
+
+/* ── Properties Panel (right panel) ───────────────────────────────── */
+
+export function PropertiesPanel({
+  selectedElement,
+  bimElements,
+  markups,
+  onBimElementUpdate,
+  onBimElementDelete,
+  onMarkupStatusChange,
+  onMarkupNavigate,
+  onMarkupLink,
+}: PropertiesPanelProps) {
+  const selectedBimElement = bimElements.find(
+    (el) => el.id === selectedElement?.globalId,
+  );
+
+  const linkedCount = selectedElement
+    ? markups.filter((m) => m.linkedBimGuid === selectedElement.globalId).length
+    : 0;
+
+  return (
+    <div className="properties-panel">
+      <div className="properties-header">
+        <span>Properties</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {!selectedElement && !selectedBimElement ? (
+          <div
+            className="p-4 text-center"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="w-8 h-8 mx-auto mb-2 opacity-30"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1}
+            >
+              <path d="M4 4 L4 18 L10 13 L16 19" />
+              <path d="M4 4 L15 8 L10 13" />
+            </svg>
+            <p className="text-[11px]">No element selected</p>
+            <p className="text-[10px] mt-1">
+              Select an element to view properties
+            </p>
+          </div>
+        ) : selectedBimElement ? (
+          <ElementEditor
+            element={selectedBimElement}
+            onUpdate={onBimElementUpdate}
+            onDelete={onBimElementDelete}
+          />
+        ) : (
+          <PropertyPanel element={selectedElement} />
+        )}
+
+        {selectedElement && linkedCount > 0 && (
+          <div className="prop-section">
+            <div className="prop-section-header">
+              <span className="status-dot blue" />
+              Linked Markups ({linkedCount})
+            </div>
+            <MarkupList
+              markups={markups}
+              onStatusChange={onMarkupStatusChange}
+              onNavigate={onMarkupNavigate}
+              onLink={onMarkupLink}
+              selectedElement={selectedElement}
+              filterByGuid={selectedElement.globalId}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Legacy default export for backward compatibility ─────────────── */
+
+interface SidebarProps {
+  tree: SpatialNode[];
+  selectedElement: SelectedElement | null;
+  markups: Markup[];
+  onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
+  onMarkupNavigate: (markup: Markup) => void;
+  onMarkupLink: (markupId: string) => void;
+  bimElements: BimElement[];
+  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
+  onBimElementDelete: (id: string) => void;
+  levels: Level[];
+  activeLevel: string;
+  onActiveLevelChange: (levelId: string) => void;
+  onLevelsChange: (levels: Level[]) => void;
+}
+
+export default function Sidebar(props: SidebarProps) {
+  return (
+    <ProjectBrowser
+      tree={props.tree}
+      bimElements={props.bimElements}
+      markups={props.markups}
+      selectedElement={props.selectedElement}
+      onMarkupStatusChange={props.onMarkupStatusChange}
+      onMarkupNavigate={props.onMarkupNavigate}
+      onMarkupLink={props.onMarkupLink}
+      levels={props.levels}
+      activeLevel={props.activeLevel}
+      onActiveLevelChange={props.onActiveLevelChange}
+      onLevelsChange={props.onLevelsChange}
+    />
   );
 }
 

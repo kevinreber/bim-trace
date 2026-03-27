@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Revit-inspired UI redesign** — complete overhaul of the application layout and styling to match Autodesk Revit's UX patterns
+- **Ribbon toolbar** — replaced flat creation toolbar with a tabbed ribbon (Modify, Architecture, Annotate, View tabs) featuring SVG icons and grouped tool panels like Revit
+- **Quick Access bar** — added Revit-style quick access toolbar above the ribbon with app title, undo/redo buttons
+- **Project Browser panel** — redesigned left sidebar as a Revit-style Project Browser with Elements, Markups, and Levels tabs
+- **Properties panel** — added dedicated right-side Properties panel with collapsible sections (Identity Data, Dimensions, Constraints, Location) matching Revit's property grid layout
+- **Status bar** — added bottom status bar showing active tool, snap state, current level, element count, and keyboard shortcuts
+- **Viewport labels** — added floating "3D View" and "2D Sheet" labels on viewports like Revit's viewport titles
+- **Updated color scheme** — shifted from flat slate to a Revit-inspired dark theme with better visual hierarchy using CSS custom properties
+- **Typography** — switched to Segoe UI font family to match Revit's interface feel
+- **Property grid inputs** — Revit-style row-based property editing with label/value columns and unit suffixes
+- **Custom scrollbars** — thin scrollbars matching the dark theme
+- **Annotation tools in ribbon** — moved 2D annotation tools from separate toolbar into the Annotate ribbon tab
+
 ### Added
 - **Roof element** — pitched roof from two-click rectangular outline with ridge height, thickness, and overhang parameters
 - **Stair element** — stepped geometry between two points with configurable riser height, tread depth, width, and number of risers

@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AnnotationLayer from "@/components/AnnotationLayer";
-import AnnotationToolbar from "@/components/AnnotationToolbar";
-import CreationToolbar from "@/components/CreationToolbar";
 import PdfViewer from "@/components/PdfViewer";
-import Sidebar from "@/components/Sidebar";
+import RibbonToolbar from "@/components/RibbonToolbar";
+import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
 import Viewer3D from "@/components/Viewer3D";
 import type {
   AnnotationTool,
@@ -151,7 +150,6 @@ function Home() {
   // BIM authoring callbacks
   const handleElementCreated = useCallback(
     (element: BimElement) => {
-      // Apply active level height
       const el = { ...element, level: activeLevelHeight };
       setBimElements((prev) => [...prev, el]);
       undoStackRef.current.push({ type: "add", element: el });
@@ -278,7 +276,6 @@ function Home() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't capture when typing in inputs
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -387,136 +384,61 @@ function Home() {
     bimElements,
   ]);
 
+  const activeLevelName =
+    levels.find((l) => l.id === activeLevel)?.name ?? "Ground";
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar
-        tree={tree}
-        selectedElement={selectedElement}
-        markups={markups}
-        onMarkupStatusChange={handleMarkupStatusChange}
-        onMarkupNavigate={handleMarkupNavigate}
-        onMarkupLink={handleMarkupLink}
-        bimElements={bimElements}
-        onBimElementUpdate={handleBimElementUpdate}
-        onBimElementDelete={handleBimElementDelete}
+    <div className="flex flex-col h-screen w-screen overflow-hidden">
+      {/* ── Ribbon Toolbar (top, full width — like Revit) ──────── */}
+      <RibbonToolbar
+        creationTool={creationTool}
+        onCreationToolChange={setCreationTool}
+        annotationTool={activeTool}
+        onAnnotationToolChange={setActiveTool}
+        hasPdf={hasPdf}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        snapEnabled={snapEnabled}
+        onSnapToggle={() => setSnapEnabled((prev) => !prev)}
+        gridSize={gridSize}
+        onGridSizeChange={setGridSize}
         levels={levels}
         activeLevel={activeLevel}
         onActiveLevelChange={setActiveLevel}
-        onLevelsChange={setLevels}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top toolbar */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900/60 border-b border-slate-700 shrink-0">
-          <div className="flex items-center gap-1">
-            {(["split", "3d", "2d"] as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  viewMode === mode
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-                }`}
-                title={`${mode === "split" ? "Split" : mode.toUpperCase()} (${mode === "split" ? "1" : mode === "3d" ? "2" : "3"})`}
-              >
-                {mode === "split" ? "Split" : mode.toUpperCase()}
-              </button>
-            ))}
-
-            <div className="w-px h-5 bg-slate-600 mx-1" />
-
-            {/* Undo/Redo */}
-            <button
-              type="button"
-              onClick={handleUndo}
-              className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-              title="Undo (Ctrl+Z)"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={handleRedo}
-              className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-              title="Redo (Ctrl+Y)"
-            >
-              Redo
-            </button>
-
-            <div className="w-px h-5 bg-slate-600 mx-1" />
-
-            {/* Snap-to-grid */}
-            <button
-              type="button"
-              onClick={() => setSnapEnabled((prev) => !prev)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                snapEnabled
-                  ? "bg-amber-600 text-white"
-                  : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-              }`}
-              title="Toggle snap-to-grid (G)"
-            >
-              Snap
-            </button>
-            {snapEnabled && (
-              <select
-                value={gridSize}
-                onChange={(e) =>
-                  setGridSize(Number.parseFloat(e.target.value) as GridSize)
-                }
-                className="px-1 py-0.5 rounded text-[10px] bg-slate-700 text-slate-300 border border-slate-600"
-              >
-                <option value={0.25}>0.25m</option>
-                <option value={0.5}>0.5m</option>
-                <option value={1}>1m</option>
-              </select>
-            )}
-
-            <div className="w-px h-5 bg-slate-600 mx-1" />
-
-            {/* Level selector */}
-            <span className="text-[10px] text-slate-500 mr-1">Level:</span>
-            <select
-              value={activeLevel}
-              onChange={(e) => setActiveLevel(e.target.value)}
-              className="px-1.5 py-0.5 rounded text-xs bg-slate-700 text-slate-300 border border-slate-600"
-            >
-              {levels.map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.name} ({level.height}m)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {bimElements.length > 0 && (
-              <span className="text-[10px] text-green-500">
-                {bimElements.length} element
-                {bimElements.length !== 1 ? "s" : ""}
-              </span>
-            )}
-            {hasPdf && (
-              <span className="text-[10px] text-slate-500">
-                Page {currentPage}
-              </span>
-            )}
-          </div>
+      {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left panel: Project Browser */}
+        <div className="w-64 shrink-0">
+          <ProjectBrowser
+            tree={tree}
+            bimElements={bimElements}
+            markups={markups}
+            selectedElement={selectedElement}
+            onMarkupStatusChange={handleMarkupStatusChange}
+            onMarkupNavigate={handleMarkupNavigate}
+            onMarkupLink={handleMarkupLink}
+            levels={levels}
+            activeLevel={activeLevel}
+            onActiveLevelChange={setActiveLevel}
+            onLevelsChange={setLevels}
+          />
         </div>
 
-        {/* Main content area */}
+        {/* Center: Viewports */}
         <div className="flex-1 flex overflow-hidden">
           {/* 3D Viewer */}
           {(viewMode === "split" || viewMode === "3d") && (
             <div
-              className={`${viewMode === "split" ? "w-1/2 border-r border-slate-700" : "flex-1"} h-full relative`}
+              className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full relative`}
+              style={{
+                borderRight:
+                  viewMode === "split" ? "1px solid var(--border)" : undefined,
+              }}
             >
-              <CreationToolbar
-                activeTool={creationTool}
-                onToolChange={setCreationTool}
-              />
               <Viewer3D
                 ref={viewer3DRef}
                 onModelLoaded={handleModelLoaded}
@@ -528,6 +450,16 @@ function Home() {
                 snapEnabled={snapEnabled}
                 gridSize={gridSize}
               />
+              {/* Viewport label (like Revit's viewport title) */}
+              <div
+                className="absolute top-2 left-2 z-10 px-2 py-1 rounded text-[10px] font-medium"
+                style={{
+                  background: "rgba(0,0,0,0.5)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                3D View
+              </div>
             </div>
           )}
 
@@ -536,11 +468,6 @@ function Home() {
             <div
               className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full flex flex-col`}
             >
-              <AnnotationToolbar
-                activeTool={activeTool}
-                onToolChange={setActiveTool}
-                hasPdf={hasPdf}
-              />
               <div className="flex-1 relative overflow-hidden">
                 <PdfViewer
                   onPageChange={handlePageChange}
@@ -555,37 +482,111 @@ function Home() {
                     selectedElement={selectedElement}
                   />
                 )}
+                {/* Viewport label */}
+                <div
+                  className="absolute top-2 left-2 z-10 px-2 py-1 rounded text-[10px] font-medium"
+                  style={{
+                    background: "rgba(0,0,0,0.5)",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  2D Sheet
+                </div>
               </div>
             </div>
           )}
+        </div>
+
+        {/* Right panel: Properties */}
+        <div className="w-72 shrink-0">
+          <PropertiesPanel
+            selectedElement={selectedElement}
+            bimElements={bimElements}
+            markups={markups}
+            onBimElementUpdate={handleBimElementUpdate}
+            onBimElementDelete={handleBimElementDelete}
+            onMarkupStatusChange={handleMarkupStatusChange}
+            onMarkupNavigate={handleMarkupNavigate}
+            onMarkupLink={handleMarkupLink}
+          />
+        </div>
+      </div>
+
+      {/* ── Status Bar (bottom, like Revit) ────────────────────── */}
+      <div className="status-bar">
+        <div className="status-bar-section">
+          {creationTool !== "none" ? (
+            <span className="status-indicator">
+              <span className="status-dot green" />
+              Creating: {creationTool} — Click to set start point
+            </span>
+          ) : activeTool !== "select" ? (
+            <span className="status-indicator">
+              <span className="status-dot blue" />
+              Annotating: {activeTool}
+            </span>
+          ) : (
+            <span>Ready</span>
+          )}
+        </div>
+        <div className="status-bar-section">
+          {snapEnabled && (
+            <span className="status-indicator">
+              <span className="status-dot amber" />
+              Snap: {gridSize}m
+            </span>
+          )}
+          <span className="status-indicator">
+            <span className="status-dot blue" />
+            Level: {activeLevelName} ({activeLevelHeight}m)
+          </span>
+          {bimElements.length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot green" />
+              {bimElements.length} element{bimElements.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {hasPdf && <span>Page {currentPage}</span>}
+          <span style={{ color: "var(--text-muted)" }}>
+            Shift+Key = Create | G = Snap | 1/2/3 = View
+          </span>
         </div>
       </div>
 
       {/* Toast notifications */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        <div className="fixed bottom-8 right-4 z-50 flex flex-col gap-2">
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`px-4 py-2 rounded-lg text-sm font-medium shadow-lg animate-slide-in ${
-                toast.type === "success"
-                  ? "bg-green-800/90 text-green-200 border border-green-700"
-                  : toast.type === "error"
-                    ? "bg-red-800/90 text-red-200 border border-red-700"
-                    : "bg-slate-800/90 text-slate-200 border border-slate-700"
-              }`}
+              className="animate-slide-in"
+              style={{
+                padding: "8px 16px",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                background:
+                  toast.type === "success"
+                    ? "rgba(76, 175, 80, 0.9)"
+                    : toast.type === "error"
+                      ? "rgba(244, 67, 54, 0.9)"
+                      : "rgba(45, 45, 64, 0.95)",
+                color: "white",
+                border: `1px solid ${
+                  toast.type === "success"
+                    ? "#66bb6a"
+                    : toast.type === "error"
+                      ? "#ef5350"
+                      : "var(--border)"
+                }`,
+              }}
             >
               {toast.message}
             </div>
           ))}
         </div>
       )}
-
-      {/* Keyboard shortcuts hint (shown briefly) */}
-      <div className="fixed bottom-4 left-4 z-40 text-[9px] text-slate-600 hidden lg:block">
-        Shift+Key = Create tool | G = Grid snap | 1/2/3 = View | Ctrl+Z/Y =
-        Undo/Redo
-      </div>
     </div>
   );
 }
