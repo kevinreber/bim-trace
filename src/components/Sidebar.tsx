@@ -21,6 +21,7 @@ interface ProjectBrowserProps {
   bimElements: BimElement[];
   markups: Markup[];
   selectedElement: SelectedElement | null;
+  onSelectElement: (elementId: string) => void;
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
   onMarkupNavigate: (markup: Markup) => void;
   onMarkupLink: (markupId: string) => void;
@@ -79,18 +80,44 @@ const TYPE_ICONS: Record<string, string> = {
   lightFixture: "F",
 };
 
-function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
+function TreeNode({
+  node,
+  depth,
+  selectedId,
+  onSelect,
+}: {
+  node: SpatialNode;
+  depth: number;
+  selectedId?: string;
+  onSelect?: (name: string) => void;
+}) {
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const icon = TYPE_ICONS[node.type] || "*";
+  const isLeaf = !hasChildren;
+  const isSelected = selectedId !== undefined && node.name === selectedId;
+
+  const handleClick = () => {
+    if (hasChildren) {
+      setExpanded(!expanded);
+    }
+    // For leaf nodes, trigger selection
+    if (isLeaf && onSelect) {
+      onSelect(node.name);
+    }
+  };
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => hasChildren && setExpanded(!expanded)}
+        onClick={handleClick}
         className="tree-node-btn"
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
+        style={{
+          paddingLeft: `${depth * 14 + 8}px`,
+          background: isSelected ? "var(--ribbon-tool-active)" : undefined,
+          color: isSelected ? "white" : undefined,
+        }}
       >
         {hasChildren ? (
           <span className={`tree-node-expand ${expanded ? "open" : ""}`}>
@@ -111,6 +138,8 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
               key={child.expressID || `${child.type}-${idx}`}
               node={child}
               depth={depth + 1}
+              selectedId={selectedId}
+              onSelect={onSelect}
             />
           ))}
         </div>
@@ -301,6 +330,7 @@ export function ProjectBrowser({
   bimElements,
   markups,
   selectedElement,
+  onSelectElement,
   onMarkupStatusChange,
   onMarkupNavigate,
   onMarkupLink,
@@ -331,6 +361,17 @@ export function ProjectBrowser({
       })),
     }));
   }, [bimElements]);
+
+  const handleTreeSelect = (name: string) => {
+    const el = bimElements.find((e) => e.name === name);
+    if (el) {
+      onSelectElement(el.id);
+    }
+  };
+
+  const selectedName = selectedElement
+    ? bimElements.find((e) => e.id === selectedElement.globalId)?.name
+    : undefined;
 
   return (
     <div className="browser-panel">
@@ -406,6 +447,8 @@ export function ProjectBrowser({
                       key={`authored-${node.type}`}
                       node={node}
                       depth={0}
+                      selectedId={selectedName}
+                      onSelect={handleTreeSelect}
                     />
                   ))}
                 </>
@@ -537,38 +580,8 @@ export function PropertiesPanel({
 
 /* ── Legacy default export for backward compatibility ─────────────── */
 
-interface SidebarProps {
-  tree: SpatialNode[];
-  selectedElement: SelectedElement | null;
-  markups: Markup[];
-  onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
-  onMarkupNavigate: (markup: Markup) => void;
-  onMarkupLink: (markupId: string) => void;
-  bimElements: BimElement[];
-  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
-  onBimElementDelete: (id: string) => void;
-  levels: Level[];
-  activeLevel: string;
-  onActiveLevelChange: (levelId: string) => void;
-  onLevelsChange: (levels: Level[]) => void;
-}
-
-export default function Sidebar(props: SidebarProps) {
-  return (
-    <ProjectBrowser
-      tree={props.tree}
-      bimElements={props.bimElements}
-      markups={props.markups}
-      selectedElement={props.selectedElement}
-      onMarkupStatusChange={props.onMarkupStatusChange}
-      onMarkupNavigate={props.onMarkupNavigate}
-      onMarkupLink={props.onMarkupLink}
-      levels={props.levels}
-      activeLevel={props.activeLevel}
-      onActiveLevelChange={props.onActiveLevelChange}
-      onLevelsChange={props.onLevelsChange}
-    />
-  );
+export default function Sidebar() {
+  return null;
 }
 
 function countNodes(nodes: SpatialNode[]): number {

@@ -118,6 +118,17 @@ const SNAP_INDICATOR_MAT = new THREE.MeshBasicMaterial({
 
 // ── Geometry builders ──────────────────────────────────────────
 
+interface WallOpening {
+  /** Distance along the wall centerline from start to the opening center */
+  centerAlongWall: number;
+  /** Width of the opening */
+  width: number;
+  /** Height of the opening */
+  height: number;
+  /** Vertical offset from wall base (e.g. sill height for windows) */
+  bottomOffset: number;
+}
+
 function buildWallMesh(
   start: { x: number; z: number },
   end: { x: number; z: number },
@@ -125,13 +136,57 @@ function buildWallMesh(
   thickness: number,
   level: number,
   material: THREE.Material,
+  openings?: WallOpening[],
 ): THREE.Mesh {
   const dx = end.x - start.x;
   const dz = end.z - start.z;
   const length = Math.sqrt(dx * dx + dz * dz);
   if (length < 0.01) return new THREE.Mesh();
 
-  const geo = new THREE.BoxGeometry(length, height, thickness);
+  let geo: THREE.BufferGeometry;
+
+  if (openings && openings.length > 0) {
+    // Build wall profile (in local 2D: x = along wall, y = up)
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(length, 0);
+    shape.lineTo(length, height);
+    shape.lineTo(0, height);
+    shape.lineTo(0, 0);
+
+    // Cut holes for each opening
+    for (const op of openings) {
+      const halfW = op.width / 2;
+      const left = Math.max(0, op.centerAlongWall - halfW);
+      const right = Math.min(length, op.centerAlongWall + halfW);
+      const bottom = Math.max(0, op.bottomOffset);
+      const top = Math.min(height, op.bottomOffset + op.height);
+      if (right <= left || top <= bottom) continue;
+
+      const hole = new THREE.Path();
+      hole.moveTo(left, bottom);
+      hole.lineTo(right, bottom);
+      hole.lineTo(right, top);
+      hole.lineTo(left, top);
+      hole.lineTo(left, bottom);
+      shape.holes.push(hole);
+    }
+
+    // Extrude along the thickness axis
+    geo = new THREE.ExtrudeGeometry(shape, {
+      depth: thickness,
+      bevelEnabled: false,
+    });
+    // ExtrudeGeometry creates shape in XY plane and extrudes along Z.
+    // We need: X = along wall, Y = up, Z = thickness.
+    // The geometry comes out fine; we just need to center Z on the thickness.
+    geo.translate(0, 0, -thickness / 2);
+    // Now shift X so that center of wall length is at origin
+    geo.translate(-length / 2, -height / 2, 0);
+  } else {
+    geo = new THREE.BoxGeometry(length, height, thickness);
+  }
+
   const mesh = new THREE.Mesh(geo, material);
 
   const cx = (start.x + end.x) / 2;
@@ -842,13 +897,53 @@ function buildLightFixtureMesh(
   return mesh;
 }
 
+function computeWallOpenings(
+  wall: BimElement,
+  allElements: BimElement[],
+): WallOpening[] {
+  const openings: WallOpening[] = [];
+  const dx = wall.end.x - wall.start.x;
+  const dz = wall.end.z - wall.start.z;
+  const wallLength = Math.sqrt(dx * dx + dz * dz);
+  if (wallLength < 0.01) return openings;
+
+  const dirX = dx / wallLength;
+  const dirZ = dz / wallLength;
+
+  for (const el of allElements) {
+    if (el.hostWallId !== wall.id) continue;
+    if (el.type !== "door" && el.type !== "window") continue;
+
+    // Project the door/window position onto the wall centerline
+    const hx = el.start.x - wall.start.x;
+    const hz = el.start.z - wall.start.z;
+    const t = hx * dirX + hz * dirZ;
+
+    const params = el.params as Record<string, number>;
+    const width = params.width ?? 0.9;
+    const height = params.height ?? 2.1;
+    const bottomOffset = el.type === "window" ? (params.sillHeight ?? 0.9) : 0;
+
+    openings.push({
+      centerAlongWall: t,
+      width,
+      height,
+      bottomOffset,
+    });
+  }
+
+  return openings;
+}
+
 function buildMeshForElement(
   el: BimElement,
   material: THREE.Material,
+  allElements?: BimElement[],
 ): THREE.Mesh {
   switch (el.type) {
     case "wall": {
       const p = el.params as { height: number; thickness: number };
+      const openings = allElements ? computeWallOpenings(el, allElements) : [];
       return buildWallMesh(
         el.start,
         el.end,
@@ -856,6 +951,7 @@ function buildMeshForElement(
         p.thickness,
         el.level,
         material,
+        openings,
       );
     }
     case "column": {
@@ -1769,7 +1865,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }
 
       const material = ELEMENT_MATERIALS[el.type];
-      const mesh = buildMeshForElement(el, material);
+      const mesh = buildMeshForElement(el, material, bimElements);
       mesh.name = el.name;
       mesh.userData = {
         bimElementId: el.id,

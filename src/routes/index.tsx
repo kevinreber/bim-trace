@@ -121,6 +121,26 @@ function Home() {
     setViewMode((prev) => (prev === "2d" ? "split" : prev));
   }, []);
 
+  // Select an authored element from the Project Browser tree
+  const handleSelectElement = useCallback(
+    (elementId: string) => {
+      const el = bimElements.find((e) => e.id === elementId);
+      if (!el) return;
+      // Set as selected element so Properties panel shows it
+      setSelectedElement({
+        expressID: 0,
+        globalId: el.id,
+        type: el.type,
+        name: el.name,
+        properties: el.params as Record<string, string | number | boolean>,
+      });
+      // Fly to it in the 3D view
+      viewer3DRef.current?.flyToElement(el.id);
+      setViewMode((prev) => (prev === "2d" ? "split" : prev));
+    },
+    [bimElements],
+  );
+
   const handleMarkupLink = useCallback(
     (markupId: string) => {
       setMarkups((prev) =>
@@ -418,6 +438,7 @@ function Home() {
             bimElements={bimElements}
             markups={markups}
             selectedElement={selectedElement}
+            onSelectElement={handleSelectElement}
             onMarkupStatusChange={handleMarkupStatusChange}
             onMarkupNavigate={handleMarkupNavigate}
             onMarkupLink={handleMarkupLink}
