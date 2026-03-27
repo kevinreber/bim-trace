@@ -42,6 +42,10 @@ export type BimElementType =
   | "window"
   | "beam"
   | "ceiling"
+  | "roof"
+  | "stair"
+  | "railing"
+  | "curtainWall"
   | "table"
   | "chair"
   | "shelving";
@@ -56,6 +60,20 @@ export interface BimElementParams {
   window: { height: number; width: number; sillHeight: number };
   beam: { height: number; width: number };
   ceiling: { thickness: number };
+  roof: { height: number; thickness: number; overhang: number };
+  stair: {
+    riserHeight: number;
+    treadDepth: number;
+    width: number;
+    numRisers: number;
+  };
+  railing: { height: number; postSpacing: number };
+  curtainWall: {
+    height: number;
+    panelWidth: number;
+    panelHeight: number;
+    mullionSize: number;
+  };
   table: { height: number; width: number; depth: number };
   chair: { height: number; width: number; depth: number };
   shelving: { height: number; width: number; depth: number };
@@ -88,6 +106,15 @@ export const DEFAULT_PARAMS: BimElementParams = {
   window: { height: 1.2, width: 1.0, sillHeight: 0.9 },
   beam: { height: 0.4, width: 0.3 },
   ceiling: { thickness: 0.15 },
+  roof: { height: 2.5, thickness: 0.2, overhang: 0.3 },
+  stair: { riserHeight: 0.18, treadDepth: 0.28, width: 1.0, numRisers: 14 },
+  railing: { height: 1.0, postSpacing: 1.2 },
+  curtainWall: {
+    height: 3.5,
+    panelWidth: 1.2,
+    panelHeight: 1.5,
+    mullionSize: 0.06,
+  },
   table: { height: 0.75, width: 1.2, depth: 0.8 },
   chair: { height: 0.9, width: 0.45, depth: 0.45 },
   shelving: { height: 1.8, width: 1.0, depth: 0.4 },

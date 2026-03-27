@@ -49,6 +49,20 @@ const ELEMENT_MATERIALS: Record<BimElementType, THREE.MeshStandardMaterial> = {
     metalness: 0.3,
   }),
   ceiling: new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.95 }),
+  roof: new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.85 }),
+  stair: new THREE.MeshStandardMaterial({ color: 0xc8b89a, roughness: 0.8 }),
+  railing: new THREE.MeshStandardMaterial({
+    color: 0x404040,
+    roughness: 0.4,
+    metalness: 0.6,
+  }),
+  curtainWall: new THREE.MeshStandardMaterial({
+    color: 0x6ec6e6,
+    roughness: 0.05,
+    transparent: true,
+    opacity: 0.45,
+    metalness: 0.3,
+  }),
   table: new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.7 }),
   chair: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.75 }),
   shelving: new THREE.MeshStandardMaterial({ color: 0x9e7c4f, roughness: 0.7 }),
@@ -388,6 +402,213 @@ function buildShelvingMesh(
   return mesh;
 }
 
+function buildRoofMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  thickness: number,
+  overhang: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const width = Math.abs(end.x - start.x) + overhang * 2;
+  const depth = Math.abs(end.z - start.z) + overhang * 2;
+  if (width < 0.01 || depth < 0.01) return new THREE.Mesh();
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+
+  // Pitched roof using a triangular prism (extruded triangle)
+  const halfW = width / 2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfW, 0);
+  shape.lineTo(halfW, 0);
+  shape.lineTo(0, height);
+  shape.closePath();
+
+  const extrudeSettings = { depth, bevelEnabled: false };
+  const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  const mesh = new THREE.Mesh(geo, material);
+  // Center the extrusion along Z
+  mesh.position.set(cx, level, cz - depth / 2);
+
+  // Add a thin slab at the base to represent thickness
+  const baseGeo = new THREE.BoxGeometry(width, thickness, depth);
+  const baseMesh = new THREE.Mesh(baseGeo, material);
+  baseMesh.position.set(0, thickness / 2, depth / 2);
+  mesh.add(baseMesh);
+
+  return mesh;
+}
+
+function buildStairMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  riserHeight: number,
+  treadDepth: number,
+  width: number,
+  numRisers: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Direction from start to end determines stair run direction
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  // Container mesh at start position
+  const containerGeo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  const mesh = new THREE.Mesh(containerGeo, material);
+  mesh.position.set(start.x, level, start.z);
+  mesh.rotation.y = -Math.atan2(dz, dx);
+
+  // Build individual steps along the local X axis
+  for (let i = 0; i < numRisers; i++) {
+    // Tread (horizontal surface)
+    const treadGeo = new THREE.BoxGeometry(treadDepth, 0.03, width);
+    const tread = new THREE.Mesh(treadGeo, material);
+    tread.position.set(
+      i * treadDepth + treadDepth / 2,
+      (i + 1) * riserHeight - 0.015,
+      0,
+    );
+    mesh.add(tread);
+
+    // Riser (vertical face)
+    const riserGeo = new THREE.BoxGeometry(0.03, riserHeight, width);
+    const riser = new THREE.Mesh(riserGeo, material);
+    riser.position.set(i * treadDepth, i * riserHeight + riserHeight / 2, 0);
+    mesh.add(riser);
+  }
+
+  return mesh;
+}
+
+function buildRailingMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  postSpacing: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  const rotation = -Math.atan2(dz, dx);
+
+  // Container
+  const containerGeo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  const mesh = new THREE.Mesh(containerGeo, material);
+  mesh.position.set(cx, level, cz);
+  mesh.rotation.y = rotation;
+
+  const postRadius = 0.025;
+  const railRadius = 0.02;
+
+  // Top rail (horizontal bar along the length)
+  const railGeo = new THREE.CylinderGeometry(railRadius, railRadius, length, 8);
+  railGeo.rotateZ(Math.PI / 2);
+  const topRail = new THREE.Mesh(railGeo, material);
+  topRail.position.set(0, height, 0);
+  mesh.add(topRail);
+
+  // Mid rail
+  const midRail = new THREE.Mesh(railGeo, material);
+  midRail.position.set(0, height * 0.5, 0);
+  mesh.add(midRail);
+
+  // Posts
+  const numPosts = Math.max(2, Math.floor(length / postSpacing) + 1);
+  const actualSpacing = length / (numPosts - 1);
+  const postGeo = new THREE.CylinderGeometry(postRadius, postRadius, height, 8);
+
+  for (let i = 0; i < numPosts; i++) {
+    const post = new THREE.Mesh(postGeo, material);
+    post.position.set(-length / 2 + i * actualSpacing, height / 2, 0);
+    mesh.add(post);
+  }
+
+  return mesh;
+}
+
+function buildCurtainWallMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  panelWidth: number,
+  panelHeight: number,
+  mullionSize: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  const rotation = -Math.atan2(dz, dx);
+
+  const containerGeo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  const mesh = new THREE.Mesh(containerGeo, material);
+  mesh.position.set(cx, level, cz);
+  mesh.rotation.y = rotation;
+
+  const mullionMat = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    roughness: 0.3,
+    metalness: 0.7,
+  });
+
+  const numCols = Math.max(1, Math.round(length / panelWidth));
+  const numRows = Math.max(1, Math.round(height / panelHeight));
+  const actualPW = length / numCols;
+  const actualPH = height / numRows;
+
+  // Glass panels
+  const panelGeo = new THREE.BoxGeometry(
+    actualPW - mullionSize,
+    actualPH - mullionSize,
+    0.02,
+  );
+  for (let col = 0; col < numCols; col++) {
+    for (let row = 0; row < numRows; row++) {
+      const panel = new THREE.Mesh(panelGeo, material);
+      panel.position.set(
+        -length / 2 + actualPW / 2 + col * actualPW,
+        actualPH / 2 + row * actualPH,
+        0,
+      );
+      mesh.add(panel);
+    }
+  }
+
+  // Vertical mullions
+  const vMullionGeo = new THREE.BoxGeometry(mullionSize, height, mullionSize);
+  for (let i = 0; i <= numCols; i++) {
+    const mullion = new THREE.Mesh(vMullionGeo, mullionMat);
+    mullion.position.set(-length / 2 + i * actualPW, height / 2, 0);
+    mesh.add(mullion);
+  }
+
+  // Horizontal mullions
+  const hMullionGeo = new THREE.BoxGeometry(length, mullionSize, mullionSize);
+  for (let i = 0; i <= numRows; i++) {
+    const mullion = new THREE.Mesh(hMullionGeo, mullionMat);
+    mullion.position.set(0, i * actualPH, 0);
+    mesh.add(mullion);
+  }
+
+  return mesh;
+}
+
 function buildMeshForElement(
   el: BimElement,
   material: THREE.Material,
@@ -456,6 +677,69 @@ function buildMeshForElement(
         el.start,
         el.end,
         p.thickness,
+        el.level,
+        material,
+      );
+    }
+    case "roof": {
+      const p = el.params as {
+        height: number;
+        thickness: number;
+        overhang: number;
+      };
+      return buildRoofMesh(
+        el.start,
+        el.end,
+        p.height,
+        p.thickness,
+        p.overhang,
+        el.level,
+        material,
+      );
+    }
+    case "stair": {
+      const p = el.params as {
+        riserHeight: number;
+        treadDepth: number;
+        width: number;
+        numRisers: number;
+      };
+      return buildStairMesh(
+        el.start,
+        el.end,
+        p.riserHeight,
+        p.treadDepth,
+        p.width,
+        p.numRisers,
+        el.level,
+        material,
+      );
+    }
+    case "railing": {
+      const p = el.params as { height: number; postSpacing: number };
+      return buildRailingMesh(
+        el.start,
+        el.end,
+        p.height,
+        p.postSpacing,
+        el.level,
+        material,
+      );
+    }
+    case "curtainWall": {
+      const p = el.params as {
+        height: number;
+        panelWidth: number;
+        panelHeight: number;
+        mullionSize: number;
+      };
+      return buildCurtainWallMesh(
+        el.start,
+        el.end,
+        p.height,
+        p.panelWidth,
+        p.panelHeight,
+        p.mullionSize,
         el.level,
         material,
       );
@@ -934,6 +1218,63 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           mesh = buildCeilingMesh(s, end, p.thickness, 3, GHOST_MATERIAL);
           break;
         }
+        case "roof": {
+          const p = params.roof;
+          const s = start ?? end;
+          mesh = buildRoofMesh(
+            s,
+            end,
+            p.height,
+            p.thickness,
+            p.overhang,
+            3,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "stair": {
+          const p = params.stair;
+          const s = start ?? end;
+          mesh = buildStairMesh(
+            s,
+            end,
+            p.riserHeight,
+            p.treadDepth,
+            p.width,
+            p.numRisers,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "railing": {
+          const p = params.railing;
+          const s = start ?? end;
+          mesh = buildRailingMesh(
+            s,
+            end,
+            p.height,
+            p.postSpacing,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "curtainWall": {
+          const p = params.curtainWall;
+          const s = start ?? end;
+          mesh = buildCurtainWallMesh(
+            s,
+            end,
+            p.height,
+            p.panelWidth,
+            p.panelHeight,
+            p.mullionSize,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
         case "table": {
           const p = params.table;
           mesh = buildTableMesh(
@@ -1088,7 +1429,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           tool === "wall" ||
           tool === "slab" ||
           tool === "beam" ||
-          tool === "ceiling";
+          tool === "ceiling" ||
+          tool === "roof" ||
+          tool === "stair" ||
+          tool === "railing" ||
+          tool === "curtainWall";
 
         if (needsTwoClicks) {
           if (!pendingStartRef.current) {
@@ -1108,8 +1453,13 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             start,
             end: point,
             params: { ...params[tool] },
-            // Ceiling defaults to room height (3m); beam to wall height
-            level: tool === "ceiling" ? 3 : tool === "beam" ? 2.6 : 0,
+            // Ceiling/roof at room height (3m); beam at wall height
+            level:
+              tool === "ceiling" || tool === "roof"
+                ? 3
+                : tool === "beam"
+                  ? 2.6
+                  : 0,
           };
           onElementCreated(el);
         } else if (tool === "door" || tool === "window") {
@@ -1342,7 +1692,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           {creationTool === "wall" ||
           creationTool === "slab" ||
           creationTool === "beam" ||
-          creationTool === "ceiling" ? (
+          creationTool === "ceiling" ||
+          creationTool === "roof" ||
+          creationTool === "stair" ||
+          creationTool === "railing" ||
+          creationTool === "curtainWall" ? (
             pendingStartRef.current ? (
               <span>Click to set end point &middot; Esc to cancel</span>
             ) : (
