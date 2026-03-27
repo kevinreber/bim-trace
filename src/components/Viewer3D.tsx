@@ -13,6 +13,7 @@ import type {
   BimElementType,
   CreationTool,
   DEFAULT_PARAMS,
+  GridSize,
   SelectedElement,
   SpatialNode,
   Viewer3DHandle,
@@ -27,6 +28,8 @@ interface Viewer3DProps {
   onElementCreated: (element: BimElement) => void;
   bimElements: BimElement[];
   defaultParams: typeof DEFAULT_PARAMS;
+  snapEnabled?: boolean;
+  gridSize?: GridSize;
 }
 
 // ── Materials ──────────────────────────────────────────────────
@@ -66,6 +69,32 @@ const ELEMENT_MATERIALS: Record<BimElementType, THREE.MeshStandardMaterial> = {
   table: new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.7 }),
   chair: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.75 }),
   shelving: new THREE.MeshStandardMaterial({ color: 0x9e7c4f, roughness: 0.7 }),
+  desk: new THREE.MeshStandardMaterial({ color: 0x7a5c3c, roughness: 0.7 }),
+  toilet: new THREE.MeshStandardMaterial({
+    color: 0xf0f0f0,
+    roughness: 0.3,
+    metalness: 0.1,
+  }),
+  sink: new THREE.MeshStandardMaterial({
+    color: 0xf5f5f5,
+    roughness: 0.3,
+    metalness: 0.1,
+  }),
+  duct: new THREE.MeshStandardMaterial({
+    color: 0x808080,
+    roughness: 0.5,
+    metalness: 0.4,
+  }),
+  pipe: new THREE.MeshStandardMaterial({
+    color: 0x606060,
+    roughness: 0.4,
+    metalness: 0.5,
+  }),
+  lightFixture: new THREE.MeshStandardMaterial({
+    color: 0xe0e0e0,
+    roughness: 0.3,
+    metalness: 0.2,
+  }),
 };
 
 const GHOST_MATERIAL = new THREE.MeshStandardMaterial({
@@ -609,6 +638,210 @@ function buildCurtainWallMesh(
   return mesh;
 }
 
+function buildDeskMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  lShaped: boolean,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const topThickness = 0.04;
+  const geo = new THREE.BoxGeometry(width, topThickness, depth);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(pos.x, level + height - topThickness / 2, pos.z);
+
+  // Legs
+  const legGeo = new THREE.BoxGeometry(0.04, height - topThickness, 0.04);
+  const legMat = new THREE.MeshStandardMaterial({
+    color: 0x5a3a1a,
+    roughness: 0.8,
+  });
+  const offX = width / 2 - 0.06;
+  const offZ = depth / 2 - 0.06;
+  const legPositions = [
+    [-offX, -(height - topThickness) / 2, -offZ],
+    [offX, -(height - topThickness) / 2, -offZ],
+    [-offX, -(height - topThickness) / 2, offZ],
+    [offX, -(height - topThickness) / 2, offZ],
+  ];
+  for (const [lx, ly, lz] of legPositions) {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(lx, ly, lz);
+    mesh.add(leg);
+  }
+
+  // L-shaped extension
+  if (lShaped) {
+    const extWidth = depth;
+    const extDepth = depth / 2;
+    const extGeo = new THREE.BoxGeometry(extWidth, topThickness, extDepth);
+    const ext = new THREE.Mesh(extGeo, material);
+    ext.position.set(
+      width / 2 + extWidth / 2 - 0.04,
+      0,
+      depth / 2 - extDepth / 2,
+    );
+    mesh.add(ext);
+
+    // Extension legs
+    const extOffX = extWidth / 2 - 0.06;
+    const extOffZ = extDepth / 2 - 0.06;
+    const extLegPositions = [
+      [extOffX, -(height - topThickness) / 2, -extOffZ],
+      [extOffX, -(height - topThickness) / 2, extOffZ],
+    ];
+    for (const [lx, ly, lz] of extLegPositions) {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(
+        width / 2 + extWidth / 2 - 0.04 + lx,
+        ly,
+        depth / 2 - extDepth / 2 + lz,
+      );
+      mesh.add(leg);
+    }
+  }
+
+  return mesh;
+}
+
+function buildToiletMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Base (bowl body)
+  const baseHeight = height * 0.6;
+  const baseGeo = new THREE.BoxGeometry(width, baseHeight, depth * 0.65);
+  const mesh = new THREE.Mesh(baseGeo, material);
+  mesh.position.set(pos.x, level + baseHeight / 2, pos.z);
+
+  // Tank behind the bowl
+  const tankW = width * 0.8;
+  const tankH = height * 0.5;
+  const tankD = depth * 0.25;
+  const tankGeo = new THREE.BoxGeometry(tankW, tankH, tankD);
+  const tank = new THREE.Mesh(tankGeo, material);
+  tank.position.set(
+    0,
+    baseHeight / 2 + tankH / 2 - baseHeight / 2,
+    (-depth * 0.65) / 2 - tankD / 2,
+  );
+  mesh.add(tank);
+
+  return mesh;
+}
+
+function buildSinkMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Pedestal
+  const pedestalGeo = new THREE.BoxGeometry(0.1, height, 0.1);
+  const mesh = new THREE.Mesh(pedestalGeo, material);
+  mesh.position.set(pos.x, level + height / 2, pos.z);
+
+  // Basin on top
+  const basinGeo = new THREE.BoxGeometry(width, 0.15, depth);
+  const basin = new THREE.Mesh(basinGeo, material);
+  basin.position.set(0, height / 2 - 0.075, 0);
+  mesh.add(basin);
+
+  // Faucet
+  const faucetMat = new THREE.MeshStandardMaterial({
+    color: 0xc0c0c0,
+    roughness: 0.3,
+    metalness: 0.7,
+  });
+  const faucetGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.15, 8);
+  const faucet = new THREE.Mesh(faucetGeo, faucetMat);
+  faucet.position.set(0, height / 2 + 0.075, -depth / 2 + 0.04);
+  mesh.add(faucet);
+
+  return mesh;
+}
+
+function buildDuctMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  width: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  const geo = new THREE.BoxGeometry(length, height, width);
+  const mesh = new THREE.Mesh(geo, material);
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  mesh.position.set(cx, level + height / 2, cz);
+  mesh.rotation.y = -Math.atan2(dz, dx);
+
+  return mesh;
+}
+
+function buildPipeMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  diameter: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  const radius = diameter / 2;
+  const geo = new THREE.CylinderGeometry(radius, radius, length, 16);
+  const mesh = new THREE.Mesh(geo, material);
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  mesh.position.set(cx, level + radius, cz);
+
+  // Rotate cylinder to lie along the direction vector
+  mesh.rotation.y = -Math.atan2(dz, dx);
+  mesh.rotation.z = Math.PI / 2;
+
+  return mesh;
+}
+
+function buildLightFixtureMesh(
+  pos: { x: number; z: number },
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Flat panel (ceiling-mounted)
+  const panelThickness = 0.03;
+  const geo = new THREE.BoxGeometry(width, panelThickness, depth);
+
+  // Clone material and add emissive glow
+  const glowMat = (material as THREE.MeshStandardMaterial).clone();
+  glowMat.emissive = new THREE.Color(0xffffee);
+  glowMat.emissiveIntensity = 0.3;
+
+  const mesh = new THREE.Mesh(geo, glowMat);
+  mesh.position.set(pos.x, level - panelThickness / 2, pos.z);
+
+  return mesh;
+}
+
 function buildMeshForElement(
   el: BimElement,
   material: THREE.Material,
@@ -777,6 +1010,70 @@ function buildMeshForElement(
         material,
       );
     }
+    case "desk": {
+      const p = el.params as {
+        height: number;
+        width: number;
+        depth: number;
+        lShaped: boolean;
+      };
+      return buildDeskMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        p.lShaped,
+        el.level,
+        material,
+      );
+    }
+    case "toilet": {
+      const p = el.params as { height: number; width: number; depth: number };
+      return buildToiletMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
+    }
+    case "sink": {
+      const p = el.params as { height: number; width: number; depth: number };
+      return buildSinkMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
+    }
+    case "duct": {
+      const p = el.params as { height: number; width: number };
+      return buildDuctMesh(
+        el.start,
+        el.end,
+        p.height,
+        p.width,
+        el.level,
+        material,
+      );
+    }
+    case "pipe": {
+      const p = el.params as { diameter: number };
+      return buildPipeMesh(el.start, el.end, p.diameter, el.level, material);
+    }
+    case "lightFixture": {
+      const p = el.params as { width: number; depth: number };
+      return buildLightFixtureMesh(
+        el.start,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
+    }
   }
 }
 
@@ -825,6 +1122,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     onElementCreated,
     bimElements,
     defaultParams,
+    snapEnabled = false,
+    gridSize = 0.5,
   },
   ref,
 ) {
@@ -859,6 +1158,12 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+
+  // Snap refs
+  const snapEnabledRef = useRef(snapEnabled);
+  snapEnabledRef.current = snapEnabled;
+  const gridSizeRef = useRef(gridSize);
+  gridSizeRef.current = gridSize;
 
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1024,7 +1329,16 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       const hit = new THREE.Vector3();
       const didHit = raycaster.ray.intersectPlane(groundPlaneRef.current, hit);
-      return didHit ? hit : null;
+      if (!didHit) return null;
+
+      // Apply snap-to-grid
+      if (snapEnabledRef.current) {
+        const gs = gridSizeRef.current;
+        hit.x = Math.round(hit.x / gs) * gs;
+        hit.z = Math.round(hit.z / gs) * gs;
+      }
+
+      return hit;
     },
     [],
   );
@@ -1311,6 +1625,66 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           );
           break;
         }
+        case "desk": {
+          const p = params.desk;
+          mesh = buildDeskMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            p.lShaped,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "toilet": {
+          const p = params.toilet;
+          mesh = buildToiletMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "sink": {
+          const p = params.sink;
+          mesh = buildSinkMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "duct": {
+          const p = params.duct;
+          const s = start ?? end;
+          mesh = buildDuctMesh(s, end, p.height, p.width, 0, GHOST_MATERIAL);
+          break;
+        }
+        case "pipe": {
+          const p = params.pipe;
+          const s = start ?? end;
+          mesh = buildPipeMesh(s, end, p.diameter, 0, GHOST_MATERIAL);
+          break;
+        }
+        case "lightFixture": {
+          const p = params.lightFixture;
+          mesh = buildLightFixtureMesh(
+            end,
+            p.width,
+            p.depth,
+            3,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
         default:
           return;
       }
@@ -1433,7 +1807,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           tool === "roof" ||
           tool === "stair" ||
           tool === "railing" ||
-          tool === "curtainWall";
+          tool === "curtainWall" ||
+          tool === "duct" ||
+          tool === "pipe";
 
         if (needsTwoClicks) {
           if (!pendingStartRef.current) {
@@ -1696,7 +2072,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           creationTool === "roof" ||
           creationTool === "stair" ||
           creationTool === "railing" ||
-          creationTool === "curtainWall" ? (
+          creationTool === "curtainWall" ||
+          creationTool === "duct" ||
+          creationTool === "pipe" ? (
             pendingStartRef.current ? (
               <span>Click to set end point &middot; Esc to cancel</span>
             ) : (

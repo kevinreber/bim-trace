@@ -185,6 +185,87 @@ export default function AnnotationLayer({
           markupType = "text";
           break;
         }
+        case "freehand": {
+          obj = new fabric.Path(`M ${pointer.x} ${pointer.y}`, {
+            stroke: "#ef4444",
+            strokeWidth: 3,
+            fill: "",
+          });
+          markupType = "freehand";
+          break;
+        }
+        case "rectangle": {
+          obj = new fabric.Rect({
+            left: pointer.x - 60,
+            top: pointer.y - 40,
+            width: 120,
+            height: 80,
+            stroke: "#3b82f6",
+            strokeWidth: 2,
+            fill: "rgba(59,130,246,0.1)",
+          });
+          markupType = "rectangle";
+          break;
+        }
+        case "circle": {
+          obj = new fabric.Circle({
+            left: pointer.x - 40,
+            top: pointer.y - 40,
+            radius: 40,
+            stroke: "#8b5cf6",
+            strokeWidth: 2,
+            fill: "rgba(139,92,246,0.1)",
+          });
+          markupType = "circle";
+          break;
+        }
+        case "polyline": {
+          obj = new fabric.Line(
+            [pointer.x, pointer.y, pointer.x + 60, pointer.y],
+            {
+              stroke: "#10b981",
+              strokeWidth: 2,
+            },
+          );
+          markupType = "polyline";
+          break;
+        }
+        case "highlight": {
+          obj = new fabric.Rect({
+            left: pointer.x - 80,
+            top: pointer.y - 15,
+            width: 160,
+            height: 30,
+            fill: "rgba(250,204,21,0.35)",
+            stroke: "",
+            strokeWidth: 0,
+            rx: 2,
+            ry: 2,
+          });
+          markupType = "highlight";
+          break;
+        }
+        case "measurement": {
+          obj = new fabric.Line(
+            [pointer.x - 50, pointer.y, pointer.x + 50, pointer.y],
+            {
+              stroke: "#f97316",
+              strokeWidth: 2,
+              strokeDashArray: [6, 3],
+            },
+          );
+          const measureLabel = new fabric.Text("0.00m", {
+            left: pointer.x - 16,
+            top: pointer.y - 20,
+            fontSize: 12,
+            fill: "#f97316",
+            fontFamily: "sans-serif",
+            selectable: false,
+          });
+          fc.add(measureLabel);
+          markupType = "measurement";
+          break;
+        }
       }
 
       if (obj) {

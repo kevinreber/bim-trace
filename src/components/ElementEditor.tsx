@@ -21,6 +21,12 @@ const TYPE_LABELS: Record<BimElementType, string> = {
   table: "Table",
   chair: "Chair",
   shelving: "Shelving",
+  desk: "Desk",
+  toilet: "Toilet",
+  sink: "Sink",
+  duct: "Duct",
+  pipe: "Pipe",
+  lightFixture: "Light Fixture",
 };
 
 interface ParamField {
@@ -207,6 +213,60 @@ const PARAM_FIELDS: Record<BimElementType, ParamField[]> = {
     { key: "height", label: "Height", unit: "m", min: 0.5, max: 3, step: 0.1 },
     { key: "width", label: "Width", unit: "m", min: 0.3, max: 3, step: 0.1 },
     { key: "depth", label: "Depth", unit: "m", min: 0.2, max: 1, step: 0.05 },
+  ],
+  desk: [
+    {
+      key: "height",
+      label: "Height",
+      unit: "m",
+      min: 0.3,
+      max: 1.5,
+      step: 0.05,
+    },
+    { key: "width", label: "Width", unit: "m", min: 0.5, max: 3, step: 0.1 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.3, max: 2, step: 0.1 },
+  ],
+  toilet: [
+    {
+      key: "height",
+      label: "Height",
+      unit: "m",
+      min: 0.3,
+      max: 0.6,
+      step: 0.01,
+    },
+    { key: "width", label: "Width", unit: "m", min: 0.3, max: 0.5, step: 0.01 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.5, max: 0.9, step: 0.01 },
+  ],
+  sink: [
+    {
+      key: "height",
+      label: "Height",
+      unit: "m",
+      min: 0.7,
+      max: 1.0,
+      step: 0.01,
+    },
+    { key: "width", label: "Width", unit: "m", min: 0.3, max: 0.8, step: 0.01 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.3, max: 0.6, step: 0.01 },
+  ],
+  duct: [
+    { key: "height", label: "Height", unit: "m", min: 0.1, max: 1, step: 0.05 },
+    { key: "width", label: "Width", unit: "m", min: 0.1, max: 1, step: 0.05 },
+  ],
+  pipe: [
+    {
+      key: "diameter",
+      label: "Diameter",
+      unit: "m",
+      min: 0.02,
+      max: 0.5,
+      step: 0.01,
+    },
+  ],
+  lightFixture: [
+    { key: "width", label: "Width", unit: "m", min: 0.2, max: 2, step: 0.1 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.2, max: 2, step: 0.1 },
   ],
 };
 

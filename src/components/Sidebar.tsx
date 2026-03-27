@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import type { BimElement, Markup, SelectedElement, SpatialNode } from "@/types";
+import type {
+  BimElement,
+  Level,
+  Markup,
+  SelectedElement,
+  SpatialNode,
+} from "@/types";
 import ElementEditor from "./ElementEditor";
 import MarkupList from "./MarkupList";
 import PropertyPanel from "./PropertyPanel";
@@ -14,14 +20,19 @@ interface SidebarProps {
   bimElements: BimElement[];
   onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
   onBimElementDelete: (id: string) => void;
+  levels: Level[];
+  activeLevel: string;
+  onActiveLevelChange: (levelId: string) => void;
+  onLevelsChange: (levels: Level[]) => void;
 }
 
-type Tab = "tree" | "properties" | "markups";
+type Tab = "tree" | "properties" | "markups" | "levels";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "tree", label: "Tree" },
   { id: "properties", label: "Properties" },
   { id: "markups", label: "Markups" },
+  { id: "levels", label: "Levels" },
 ];
 
 const TYPE_ICONS: Record<string, string> = {
@@ -49,6 +60,12 @@ const TYPE_ICONS: Record<string, string> = {
   table: "T",
   chair: "H",
   shelving: "L",
+  desk: "K",
+  toilet: "O",
+  sink: "J",
+  duct: "U",
+  pipe: "P",
+  lightFixture: "F",
 };
 
 function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
@@ -102,6 +119,139 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
   );
 }
 
+function LevelManager({
+  levels,
+  activeLevel,
+  onActiveLevelChange,
+  onLevelsChange,
+}: {
+  levels: Level[];
+  activeLevel: string;
+  onActiveLevelChange: (id: string) => void;
+  onLevelsChange: (levels: Level[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const toggleVisibility = (id: string) => {
+    onLevelsChange(
+      levels.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)),
+    );
+  };
+
+  const updateLevelName = (id: string, name: string) => {
+    onLevelsChange(levels.map((l) => (l.id === id ? { ...l, name } : l)));
+  };
+
+  const updateLevelHeight = (id: string, height: number) => {
+    onLevelsChange(levels.map((l) => (l.id === id ? { ...l, height } : l)));
+  };
+
+  const addLevel = () => {
+    const maxHeight = Math.max(...levels.map((l) => l.height));
+    const newLevel: Level = {
+      id: `level-${crypto.randomUUID().slice(0, 8)}`,
+      name: `Level ${levels.length}`,
+      height: maxHeight + 3,
+      visible: true,
+    };
+    onLevelsChange([...levels, newLevel]);
+  };
+
+  const removeLevel = (id: string) => {
+    if (levels.length <= 1) return;
+    onLevelsChange(levels.filter((l) => l.id !== id));
+    if (activeLevel === id) {
+      onActiveLevelChange(levels[0].id === id ? levels[1].id : levels[0].id);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1 p-2">
+      {levels
+        .sort((a, b) => b.height - a.height)
+        .map((level) => (
+          <div
+            key={level.id}
+            className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+              activeLevel === level.id
+                ? "bg-blue-900/30 border border-blue-800/40"
+                : "hover:bg-slate-700/30"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => toggleVisibility(level.id)}
+              className={`text-xs w-5 h-5 flex items-center justify-center rounded ${
+                level.visible
+                  ? "text-blue-400 bg-blue-500/15"
+                  : "text-slate-500 bg-slate-700/30"
+              }`}
+              title={level.visible ? "Hide level" : "Show level"}
+            >
+              {level.visible ? "V" : "H"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onActiveLevelChange(level.id)}
+              className="flex-1 text-left"
+            >
+              {editingId === level.id ? (
+                <input
+                  type="text"
+                  value={level.name}
+                  onChange={(e) => updateLevelName(level.id, e.target.value)}
+                  onBlur={() => setEditingId(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setEditingId(null);
+                  }}
+                  className="bg-slate-700/50 border border-slate-600 rounded px-1 py-0.5 text-xs text-white w-full focus:outline-none focus:border-blue-500"
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={`text-xs text-left ${activeLevel === level.id ? "text-blue-300 font-medium" : "text-slate-300"}`}
+                  onDoubleClick={() => setEditingId(level.id)}
+                >
+                  {level.name}
+                </button>
+              )}
+            </button>
+
+            <input
+              type="number"
+              value={level.height}
+              step={0.5}
+              onChange={(e) => {
+                const val = Number.parseFloat(e.target.value);
+                if (!Number.isNaN(val)) updateLevelHeight(level.id, val);
+              }}
+              className="w-14 px-1 py-0.5 rounded text-[10px] bg-slate-700/50 border border-slate-600 text-right text-slate-300 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="text-[9px] text-slate-500">m</span>
+
+            <button
+              type="button"
+              onClick={() => removeLevel(level.id)}
+              className="text-[10px] text-slate-500 hover:text-red-400 transition-colors px-1"
+              title="Remove level"
+            >
+              x
+            </button>
+          </div>
+        ))}
+
+      <button
+        type="button"
+        onClick={addLevel}
+        className="mt-1 px-2 py-1.5 rounded text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors border border-dashed border-slate-600"
+      >
+        + Add Level
+      </button>
+    </div>
+  );
+}
+
 export default function Sidebar({
   tree,
   selectedElement,
@@ -112,6 +262,10 @@ export default function Sidebar({
   bimElements,
   onBimElementUpdate,
   onBimElementDelete,
+  levels,
+  activeLevel,
+  onActiveLevelChange,
+  onLevelsChange,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>("tree");
 
@@ -264,6 +418,15 @@ export default function Sidebar({
             onNavigate={onMarkupNavigate}
             onLink={onMarkupLink}
             selectedElement={selectedElement}
+          />
+        )}
+
+        {activeTab === "levels" && (
+          <LevelManager
+            levels={levels}
+            activeLevel={activeLevel}
+            onActiveLevelChange={onActiveLevelChange}
+            onLevelsChange={onLevelsChange}
           />
         )}
       </div>

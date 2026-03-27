@@ -16,16 +16,40 @@ export interface SelectedElement {
 export interface Markup {
   id: string;
   pageNumber: number;
-  type: "cloud" | "arrow" | "callout" | "text";
+  type: MarkupType;
   coords: { x: number; y: number; width?: number; height?: number };
   comment: string;
   status: "open" | "resolved" | "pending";
   linkedBimGuid?: string;
   linkedElementName?: string;
   createdAt: number;
+  color?: string;
 }
 
-export type AnnotationTool = "select" | "cloud" | "arrow" | "callout" | "text";
+export type MarkupType =
+  | "cloud"
+  | "arrow"
+  | "callout"
+  | "text"
+  | "freehand"
+  | "rectangle"
+  | "circle"
+  | "polyline"
+  | "highlight"
+  | "measurement";
+
+export type AnnotationTool =
+  | "select"
+  | "cloud"
+  | "arrow"
+  | "callout"
+  | "text"
+  | "freehand"
+  | "rectangle"
+  | "circle"
+  | "polyline"
+  | "highlight"
+  | "measurement";
 
 /** Handle exposed by Viewer3D via forwardRef for programmatic camera control */
 export interface Viewer3DHandle {
@@ -48,7 +72,13 @@ export type BimElementType =
   | "curtainWall"
   | "table"
   | "chair"
-  | "shelving";
+  | "shelving"
+  | "desk"
+  | "toilet"
+  | "sink"
+  | "duct"
+  | "pipe"
+  | "lightFixture";
 
 export type CreationTool = "none" | BimElementType;
 
@@ -77,6 +107,12 @@ export interface BimElementParams {
   table: { height: number; width: number; depth: number };
   chair: { height: number; width: number; depth: number };
   shelving: { height: number; width: number; depth: number };
+  desk: { height: number; width: number; depth: number; lShaped: boolean };
+  toilet: { height: number; width: number; depth: number };
+  sink: { height: number; width: number; depth: number };
+  duct: { height: number; width: number };
+  pipe: { diameter: number };
+  lightFixture: { width: number; depth: number };
 }
 
 export interface BimElement {
@@ -118,4 +154,50 @@ export const DEFAULT_PARAMS: BimElementParams = {
   table: { height: 0.75, width: 1.2, depth: 0.8 },
   chair: { height: 0.9, width: 0.45, depth: 0.45 },
   shelving: { height: 1.8, width: 1.0, depth: 0.4 },
+  desk: { height: 0.75, width: 1.5, depth: 0.7, lShaped: false },
+  toilet: { height: 0.42, width: 0.38, depth: 0.7 },
+  sink: { height: 0.85, width: 0.5, depth: 0.4 },
+  duct: { height: 0.3, width: 0.4 },
+  pipe: { diameter: 0.1 },
+  lightFixture: { width: 0.6, depth: 0.6 },
 };
+
+// ── Undo/Redo ──────────────────────────────────────────────────
+
+export type UndoAction =
+  | { type: "add"; element: BimElement }
+  | { type: "delete"; element: BimElement }
+  | {
+      type: "update";
+      id: string;
+      before: Partial<BimElement>;
+      after: Partial<BimElement>;
+    }
+  | { type: "addMarkup"; markup: Markup }
+  | { type: "deleteMarkup"; markup: Markup }
+  | {
+      type: "updateMarkup";
+      id: string;
+      before: Partial<Markup>;
+      after: Partial<Markup>;
+    };
+
+// ── Snap & Grid ──────────────────────────────────────────────
+
+export type GridSize = 0.25 | 0.5 | 1;
+
+// ── Level Manager ──────────────────────────────────────────────
+
+export interface Level {
+  id: string;
+  name: string;
+  height: number;
+  visible: boolean;
+}
+
+export const DEFAULT_LEVELS: Level[] = [
+  { id: "ground", name: "Ground", height: 0, visible: true },
+  { id: "level-1", name: "Level 1", height: 3, visible: true },
+  { id: "level-2", name: "Level 2", height: 6, visible: true },
+  { id: "roof", name: "Roof", height: 9, visible: true },
+];

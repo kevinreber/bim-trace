@@ -19,13 +19,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Table preset** — rectangular surface with four legs (height/width/depth params)
 - **Chair preset** — seat with backrest and four legs (parametric dimensions)
 - **Shelving preset** — multi-shelf unit with side panels and back (parametric dimensions)
-- **Categorized creation toolbar** — tools organized into Structure, Openings, and Furniture groups
+- **Desk element** — straight or L-shaped desk with legs (height/width/depth params)
+- **Toilet fixture** — basic toilet geometry with bowl and tank (bathroom fixtures)
+- **Sink fixture** — pedestal sink with basin and faucet (bathroom fixtures)
+- **Duct element** — rectangular cross-section duct between two points (MEP)
+- **Pipe element** — cylindrical pipe between two points with diameter param (MEP)
+- **Light Fixture element** — ceiling-mounted panel light with emissive glow (MEP)
+- **Categorized creation toolbar** — tools organized into Structure, Openings, Furniture, Fixtures, and MEP groups
+- **Fixtures tool group** — toilet and sink in dedicated Fixtures category
+- **MEP tool group** — duct, pipe, and light fixture in dedicated MEP category
+- **Undo/Redo system** — full command stack for element creation, deletion, and parameter updates (Ctrl+Z / Ctrl+Y)
+- **Snap-to-grid** — configurable grid snapping (0.25m / 0.5m / 1m) with toggle button and G hotkey
+- **Level manager** — define named levels (Ground, Level 1, Level 2, Roof) with adjustable heights
+- **Level selector** — dropdown to set active level (new elements placed at that height)
+- **Level visibility toggle** — show/hide elements per level
+- **Add/remove levels** — dynamically add or remove building levels
+- **Keyboard shortcuts** — Shift+key for all creation tools, 1/2/3 for view modes, Delete for element removal, Escape to deselect
+- **Freehand annotation** — pressure-sensitive freehand drawing tool for PDF markup
+- **Rectangle annotation** — rectangle shape markup tool
+- **Circle annotation** — circle/ellipse shape markup tool
+- **Polyline annotation** — multi-point connected line markup tool
+- **Highlight annotation** — semi-transparent rectangular highlight for text emphasis
+- **Measurement annotation** — distance measurement tool with dashed line and label
+- **Grouped annotation toolbar** — tools organized into Draw, Shapes, and Measure groups
+- **Toast notifications** — success/error/info messages for element creation and deletion
+- **Keyboard shortcuts hint** — persistent hint bar showing available shortcuts
 - **CHANGELOG.md** — project changelog following Keep a Changelog format
 - **Claude Code changelog hook** — automatic reminder to update changelog on every commit
 
 ### Fixed
 - **Window rendering** — frame bars now render as child meshes of the glass pane (previously dead code)
-- **Sidebar icons** — added TYPE_ICONS entries for all 6 new element types
+- **Sidebar icons** — added TYPE_ICONS entries for all element types including new MEP and fixture types
 - **Door visibility** — darker wood color (0x5c3317) and thicker geometry (0.12m) so doors stand out against walls
 
 ---

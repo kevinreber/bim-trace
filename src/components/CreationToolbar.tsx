@@ -32,6 +32,18 @@ const FURNITURE_TOOLS: ToolDef[] = [
   { id: "table", label: "Table", icon: "T" },
   { id: "chair", label: "Chair", icon: "H" },
   { id: "shelving", label: "Shelving", icon: "L" },
+  { id: "desk", label: "Desk", icon: "K" },
+];
+
+const FIXTURE_TOOLS: ToolDef[] = [
+  { id: "toilet", label: "Toilet", icon: "O" },
+  { id: "sink", label: "Sink", icon: "J" },
+];
+
+const MEP_TOOLS: ToolDef[] = [
+  { id: "duct", label: "Duct", icon: "U" },
+  { id: "pipe", label: "Pipe", icon: "P" },
+  { id: "lightFixture", label: "Light", icon: "F" },
 ];
 
 function ToolGroup({
@@ -115,6 +127,22 @@ export default function CreationToolbar({
       <ToolGroup
         label="Furniture"
         tools={FURNITURE_TOOLS}
+        activeTool={activeTool}
+        onToolChange={onToolChange}
+      />
+
+      <div className="w-px h-5 bg-slate-600 mx-1" />
+      <ToolGroup
+        label="Fixtures"
+        tools={FIXTURE_TOOLS}
+        activeTool={activeTool}
+        onToolChange={onToolChange}
+      />
+
+      <div className="w-px h-5 bg-slate-600 mx-1" />
+      <ToolGroup
+        label="MEP"
+        tools={MEP_TOOLS}
         activeTool={activeTool}
         onToolChange={onToolChange}
       />
