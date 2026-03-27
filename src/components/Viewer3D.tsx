@@ -157,65 +157,50 @@ function buildWindowMesh(
   material: THREE.Material,
   rotation?: number,
 ): THREE.Mesh {
-  // Window = glass pane with a thin frame
-  const group = new THREE.Group();
-
-  // Glass pane
+  // Glass pane as the primary mesh
   const glassGeo = new THREE.BoxGeometry(width, height, 0.04);
-  const glassMesh = new THREE.Mesh(glassGeo, material);
-  glassMesh.position.set(0, 0, 0);
-  group.add(glassMesh);
+  const mesh = new THREE.Mesh(glassGeo, material);
+  mesh.position.set(pos.x, level + sillHeight + height / 2, pos.z);
+  if (rotation !== undefined) {
+    mesh.rotation.y = rotation;
+  }
 
-  // Frame (slightly larger box, wireframe-ish via edges)
+  // Frame bars as child meshes
   const frameMat = new THREE.MeshStandardMaterial({
     color: 0xdcdcdc,
     roughness: 0.4,
   });
-  const frameThickness = 0.04;
+  const ft = 0.04;
 
-  // Top frame bar
   const topBar = new THREE.Mesh(
-    new THREE.BoxGeometry(width + frameThickness, frameThickness, 0.06),
+    new THREE.BoxGeometry(width + ft, ft, 0.06),
     frameMat,
   );
   topBar.position.set(0, height / 2, 0);
-  group.add(topBar);
+  mesh.add(topBar);
 
-  // Bottom frame bar
   const bottomBar = new THREE.Mesh(
-    new THREE.BoxGeometry(width + frameThickness, frameThickness, 0.06),
+    new THREE.BoxGeometry(width + ft, ft, 0.06),
     frameMat,
   );
   bottomBar.position.set(0, -height / 2, 0);
-  group.add(bottomBar);
+  mesh.add(bottomBar);
 
-  // Left frame bar
   const leftBar = new THREE.Mesh(
-    new THREE.BoxGeometry(frameThickness, height, 0.06),
+    new THREE.BoxGeometry(ft, height, 0.06),
     frameMat,
   );
   leftBar.position.set(-width / 2, 0, 0);
-  group.add(leftBar);
+  mesh.add(leftBar);
 
-  // Right frame bar
   const rightBar = new THREE.Mesh(
-    new THREE.BoxGeometry(frameThickness, height, 0.06),
+    new THREE.BoxGeometry(ft, height, 0.06),
     frameMat,
   );
   rightBar.position.set(width / 2, 0, 0);
-  group.add(rightBar);
+  mesh.add(rightBar);
 
-  // Merge into a single mesh for consistency with the rest of the system
-  // We'll use the glass pane as the primary mesh and attach frame as children
-  const container = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, 0.05),
-    material,
-  );
-  container.position.set(pos.x, level + sillHeight + height / 2, pos.z);
-  if (rotation !== undefined) {
-    container.rotation.y = rotation;
-  }
-  return container;
+  return mesh;
 }
 
 function buildBeamMesh(

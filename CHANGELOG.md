@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CHANGELOG.md** — project changelog following Keep a Changelog format
 - **Claude Code changelog hook** — automatic reminder to update changelog on every commit
 
+### Fixed
+- **Window rendering** — frame bars now render as child meshes of the glass pane (previously dead code)
+- **Sidebar icons** — added TYPE_ICONS entries for all 6 new element types
+
 ---
 
 ## [0.4.0] - 2025-06-15
