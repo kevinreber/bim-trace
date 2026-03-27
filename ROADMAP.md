@@ -319,6 +319,229 @@
 
 ---
 
+## PR 14 — Site Analysis & Environmental Simulation
+
+### Site Setup
+- [ ] **Geographic location** — search by address or drop pin on a map (lat/lng)
+- [ ] **True north calibration** — set true north direction relative to model
+- [ ] **North arrow indicator** — persistent compass overlay on 3D view
+- [ ] **Site boundary** — draw property lines on ground plane with area calculation
+- [ ] **Terrain/topography** — import elevation data or sculpt terrain mesh
+- [ ] **Context buildings** — place massing boxes for neighboring buildings
+
+### Sun Path & Shadow Study
+- [ ] **Sun path diagram** — accurate analemma overlay based on lat/lng
+- [ ] **Real-time shadows** — directional light matched to actual sun position
+- [ ] **Date/time slider** — scrub through any date and time of year
+- [ ] **Shadow animation** — animate shadows from sunrise to sunset
+- [ ] **Shadow study export** — capture shadow diagrams at solstice/equinox
+- [ ] **Solar access analysis** — heatmap showing hours of direct sun per surface
+- [ ] **Golden hour indicator** — highlight best natural light windows
+
+### Wind & Climate
+- [ ] **Wind rose** — fetch prevailing wind data for location, display as diagram
+- [ ] **Natural ventilation analysis** — identify cross-ventilation opportunities
+- [ ] **Climate data dashboard** — temperature, humidity, rainfall averages by month
+- [ ] **Microclimate zones** — tag outdoor areas as shaded, windy, sheltered
+
+---
+
+## PR 15 — Energy & Sustainability Analysis
+
+### Daylighting
+- [ ] **Daylight factor calculation** — estimate natural light levels per room
+- [ ] **Window-to-wall ratio** — auto-calculate per facade with target thresholds
+- [ ] **Glare analysis** — flag windows with excessive direct sun exposure
+- [ ] **Light shelf / overhang simulation** — model shading devices and their effect
+
+### Energy Performance
+- [ ] **Envelope U-value calculator** — assign insulation to walls/roofs, compute R-values
+- [ ] **Energy use intensity (EUI)** — estimate kBtu/sqft/yr based on envelope + climate
+- [ ] **Solar panel optimizer** — calculate roof area eligible for PV, estimate kWh/yr
+- [ ] **Passive design advisor** — AI recommends orientation, overhangs, thermal mass
+- [ ] **HVAC load estimate** — rough heating/cooling loads from envelope and climate
+
+### Sustainability Tracking
+- [ ] **LEED checklist** — interactive checklist with auto-scored items
+- [ ] **BREEAM checklist** — UK green building standard tracker
+- [ ] **Embodied carbon estimate** — kg CO2 per element based on material type
+- [ ] **Carbon dashboard** — total project embodied + operational carbon summary
+
+---
+
+## PR 16 — Construction Documents & Auto-Drawing Generation
+
+### Auto-Generated 2D Drawings from 3D Model
+- [ ] **Floor plan generation** — orthographic cut at each level with proper line weights
+- [ ] **Reflected ceiling plan** — ceiling layout view (lights, diffusers, soffits)
+- [ ] **Building sections** — cut section at any user-defined plane
+- [ ] **Elevations** — auto-generate exterior views from N/S/E/W
+- [ ] **Detail views** — enlarged views of specific areas at larger scale
+- [ ] **Wall sections** — detailed vertical cut showing assembly layers
+
+### Drawing Annotation
+- [ ] **Auto-dimensions** — intelligently place dimension strings on walls and openings
+- [ ] **Room labels** — auto-detect enclosed rooms, label with name + area
+- [ ] **Door/window tags** — auto-tag with type mark and instance number
+- [ ] **Section callout markers** — place section cut indicators on plans
+- [ ] **Level indicators** — show level markers on sections/elevations
+- [ ] **Grid lines** — structural grid with alphanumeric labels (A, B, C / 1, 2, 3)
+
+### Sheet Management
+- [ ] **Title block templates** — customizable title blocks with project info
+- [ ] **Sheet set organizer** — organize drawings into numbered sheets (A101, A201, S101...)
+- [ ] **Viewport placement** — place multiple views on a single sheet at different scales
+- [ ] **Revision clouds** — mark changed areas on sheets with revision tracking
+- [ ] **Revision schedule** — auto-generated revision table in title block
+- [ ] **Print-to-PDF** — export entire sheet set as multi-page PDF
+
+### Schedules & Tables
+- [ ] **Door schedule** — auto-generated table of all doors with type, size, hardware
+- [ ] **Window schedule** — table of all windows with dimensions, glass type
+- [ ] **Room schedule** — table of all rooms with area, floor finish, ceiling height
+- [ ] **Finish schedule** — floor, wall, ceiling finishes per room
+- [ ] **Custom schedule builder** — pick element type + properties to generate any schedule
+
+---
+
+## PR 17 — Rendering & Visualization
+
+### Materials & Textures
+- [ ] **PBR material library** — realistic materials (wood, concrete, glass, steel, brick)
+- [ ] **Material browser** — searchable library with preview thumbnails
+- [ ] **Custom material upload** — upload texture maps (albedo, normal, roughness)
+- [ ] **Manufacturer catalog** — link to real product materials (stretch goal)
+- [ ] **Material assignment UI** — click element, pick material from library
+
+### Real-Time Rendering
+- [ ] **HDR environment maps** — realistic sky lighting and reflections
+- [ ] **Shadow mapping** — soft shadows from sun + artificial lights
+- [ ] **Screen-space reflections** — reflective floors and glass
+- [ ] **Ambient occlusion (SSAO)** — depth perception in corners and crevices
+- [ ] **Depth of field** — focal blur for presentation views
+- [ ] **Tone mapping** — filmic or ACES tone mapping for realistic exposure
+
+### Scene Composition
+- [ ] **Artificial lighting** — place point, spot, and area lights with intensity/color
+- [ ] **People & vegetation** — place 2D billboard or 3D entourage objects
+- [ ] **Vehicles** — parked cars for context in site renders
+- [ ] **Sky presets** — clear, cloudy, sunset, overcast, night
+- [ ] **Time-of-day presets** — morning, noon, golden hour, dusk, night
+- [ ] **Seasonal presets** — summer (green trees), autumn (orange), winter (bare/snow)
+
+### Render Output
+- [ ] **Screenshot capture** — high-res screenshot at any resolution
+- [ ] **Walkthrough animation** — define camera path, export as video (WebM/MP4)
+- [ ] **Panorama export** — 360° equirectangular image for VR viewing
+- [ ] **Turntable animation** — auto-orbit around model and export
+- [ ] **Batch rendering** — queue multiple named views for overnight rendering
+
+---
+
+## PR 18 — AI-Powered Design Tools
+
+### AI Floor Plan Generation
+- [ ] **Room program input** — specify rooms (3BR/2BA, 1500sqft, open kitchen)
+- [ ] **AI layout generator** — generate multiple floor plan options from program
+- [ ] **Layout scoring** — rate options by circulation efficiency, daylight, views
+- [ ] **Iterative refinement** — "make the kitchen bigger", "swap bedrooms"
+- [ ] **Zoning-aware generation** — respect setbacks, FAR, height limits
+
+### Sketch-to-BIM
+- [ ] **Photo-to-plan** — upload photo of hand-drawn sketch, AI converts to walls/doors
+- [ ] **Image-to-massing** — upload building photo, AI generates approximate 3D model
+- [ ] **PDF-to-BIM** — import existing floor plan PDF, AI traces walls into 3D elements
+- [ ] **Napkin sketch mode** — draw rough shapes in 2D, AI snaps to clean geometry
+
+### AI Design Assistance
+- [ ] **Auto-room detection** — trace enclosed wall loops, identify rooms, calculate areas
+- [ ] **Furniture auto-layout** — AI places furniture in rooms based on room type + size
+- [ ] **Facade generator** — AI generates facade patterns/options for a given elevation
+- [ ] **Structural sizing** — AI suggests beam/column sizes based on spans and loads
+- [ ] **Code compliance checker** — AI flags violations against selected building code
+- [ ] **Cost optimization** — AI suggests cheaper material alternatives that meet spec
+- [ ] **Accessibility checker** — AI verifies ADA compliance (door widths, ramp slopes, turning radii)
+
+### AI Rendering & Visualization
+- [ ] **Text-to-render** — describe scene in words, AI generates photorealistic image
+- [ ] **Style transfer** — "render in the style of Tadao Ando / Zaha Hadid / Scandinavian minimal"
+- [ ] **AI people placement** — auto-populate renders with contextually appropriate people
+- [ ] **AI landscaping** — auto-place trees, shrubs, grass based on climate and style
+- [ ] **AI sky generation** — generate HDR sky for specific location, date, time, weather
+- [ ] **AI upscaling** — render at low-res, AI upscale to 4K with detail enhancement
+- [ ] **AI material suggestion** — recommend materials based on climate, budget, aesthetic
+
+### AI Documentation
+- [ ] **AI markup summarizer** — summarize all open issues into a narrative report
+- [ ] **Auto-spec writer** — generate specification text from element properties
+- [ ] **Meeting notes generator** — summarize review session markups into action items
+- [ ] **Change narrative** — AI describes what changed between two project versions
+
+---
+
+## PR 19 — Cost Estimation & Construction Scheduling (4D/5D BIM)
+
+### Quantity Takeoff
+- [ ] **Auto-quantities** — calculate material quantities from all placed elements
+- [ ] **Wall area** — net wall area (subtract openings) per wall type
+- [ ] **Floor area** — total slab area per level
+- [ ] **Volume calculations** — concrete volume for slabs, walls, columns
+- [ ] **Element count** — doors, windows, columns, fixtures per type
+- [ ] **Quantity export** — export quantities to CSV/Excel
+
+### Cost Estimation (5D)
+- [ ] **Unit cost library** — assign $/sqft, $/linear ft, $/each to element types
+- [ ] **Cost rollup** — total project cost auto-calculated from quantities x unit costs
+- [ ] **Cost breakdown by category** — structural, architectural, MEP, sitework
+- [ ] **Cost comparison** — compare costs between design options
+- [ ] **Budget tracking** — set budget target, show over/under
+- [ ] **Regional cost data** — adjust unit costs by geographic region
+
+### Construction Phasing (4D)
+- [ ] **Phase definition** — define construction phases (foundation, structure, envelope, MEP, finishes)
+- [ ] **Element-to-phase assignment** — assign each element to a construction phase
+- [ ] **Phase timeline** — Gantt chart showing phase durations
+- [ ] **4D animation** — animate model building up phase-by-phase
+- [ ] **Critical path** — highlight dependencies between phases
+- [ ] **Phase color-coding** — color elements by assigned phase in 3D view
+
+---
+
+## PR 20 — VR / AR & Immersive Experience
+
+### WebXR
+- [ ] **VR walkthrough** — enter model in VR headset via WebXR API
+- [ ] **AR placement** — place model in real world via phone camera (WebXR AR)
+- [ ] **Teleport navigation** — click to teleport in VR
+- [ ] **Scale toggle** — switch between 1:1 walkthrough and tabletop model view
+- [ ] **VR annotations** — place markups while in VR
+
+### Immersive Presentation
+- [ ] **Cinematic mode** — letterbox view with depth-of-field for presentations
+- [ ] **Before/after slider** — compare two design options with a slider overlay
+- [ ] **Interactive client walkthrough** — shareable link for clients to explore in browser
+- [ ] **Presentation mode** — fullscreen with minimal UI, keyboard-driven named views
+
+---
+
+## PR 21 — GIS & Geospatial Integration
+
+### Location Services
+- [ ] **Address search** — geocode address to lat/lng via API
+- [ ] **Map view** — embed interactive map for site selection
+- [ ] **Parcel data** — import property boundary from public GIS data
+- [ ] **Zoning overlay** — show zoning designation and setback requirements
+- [ ] **Flood zone overlay** — show FEMA flood zone data for site
+
+### Terrain & Context
+- [ ] **Elevation data import** — pull DEM/LIDAR terrain data for site
+- [ ] **Street view embed** — show Google/Mapillary street view at site location
+- [ ] **Satellite imagery** — drape aerial photo on terrain mesh
+- [ ] **3D city context** — load OpenStreetMap 3D buildings around site
+- [ ] **Tree survey** — import/place existing trees with canopy radius
+
+---
+
 ## Technical Debt & Infrastructure (Ongoing)
 
 - [ ] **Testing** — unit tests (Vitest), component tests (Testing Library), E2E (Playwright)
