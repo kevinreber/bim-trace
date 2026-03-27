@@ -11,6 +11,12 @@ const TYPE_LABELS: Record<BimElementType, string> = {
   column: "Column",
   slab: "Slab",
   door: "Door",
+  window: "Window",
+  beam: "Beam",
+  ceiling: "Ceiling",
+  table: "Table",
+  chair: "Chair",
+  shelving: "Shelving",
 };
 
 interface ParamField {
@@ -58,6 +64,61 @@ const PARAM_FIELDS: Record<BimElementType, ParamField[]> = {
   door: [
     { key: "height", label: "Height", unit: "m", min: 1, max: 4, step: 0.1 },
     { key: "width", label: "Width", unit: "m", min: 0.5, max: 3, step: 0.1 },
+  ],
+  window: [
+    { key: "height", label: "Height", unit: "m", min: 0.3, max: 3, step: 0.1 },
+    { key: "width", label: "Width", unit: "m", min: 0.3, max: 4, step: 0.1 },
+    {
+      key: "sillHeight",
+      label: "Sill Height",
+      unit: "m",
+      min: 0,
+      max: 3,
+      step: 0.1,
+    },
+  ],
+  beam: [
+    { key: "height", label: "Height", unit: "m", min: 0.1, max: 2, step: 0.05 },
+    { key: "width", label: "Width", unit: "m", min: 0.1, max: 1, step: 0.05 },
+  ],
+  ceiling: [
+    {
+      key: "thickness",
+      label: "Thickness",
+      unit: "m",
+      min: 0.05,
+      max: 1,
+      step: 0.01,
+    },
+  ],
+  table: [
+    {
+      key: "height",
+      label: "Height",
+      unit: "m",
+      min: 0.3,
+      max: 1.5,
+      step: 0.05,
+    },
+    { key: "width", label: "Width", unit: "m", min: 0.5, max: 3, step: 0.1 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.3, max: 2, step: 0.1 },
+  ],
+  chair: [
+    {
+      key: "height",
+      label: "Height",
+      unit: "m",
+      min: 0.5,
+      max: 1.5,
+      step: 0.05,
+    },
+    { key: "width", label: "Width", unit: "m", min: 0.3, max: 1, step: 0.05 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.3, max: 1, step: 0.05 },
+  ],
+  shelving: [
+    { key: "height", label: "Height", unit: "m", min: 0.5, max: 3, step: 0.1 },
+    { key: "width", label: "Width", unit: "m", min: 0.3, max: 3, step: 0.1 },
+    { key: "depth", label: "Depth", unit: "m", min: 0.2, max: 1, step: 0.05 },
   ],
 };
 

@@ -34,7 +34,17 @@ export interface Viewer3DHandle {
 
 // ── BIM Authoring ──────────────────────────────────────────────
 
-export type BimElementType = "wall" | "column" | "slab" | "door";
+export type BimElementType =
+  | "wall"
+  | "column"
+  | "slab"
+  | "door"
+  | "window"
+  | "beam"
+  | "ceiling"
+  | "table"
+  | "chair"
+  | "shelving";
 
 export type CreationTool = "none" | BimElementType;
 
@@ -43,6 +53,12 @@ export interface BimElementParams {
   column: { height: number; radius: number };
   slab: { thickness: number };
   door: { height: number; width: number };
+  window: { height: number; width: number; sillHeight: number };
+  beam: { height: number; width: number };
+  ceiling: { thickness: number };
+  table: { height: number; width: number; depth: number };
+  chair: { height: number; width: number; depth: number };
+  shelving: { height: number; width: number; depth: number };
 }
 
 export interface BimElement {
@@ -69,4 +85,10 @@ export const DEFAULT_PARAMS: BimElementParams = {
   column: { height: 3, radius: 0.15 },
   slab: { thickness: 0.25 },
   door: { height: 2.1, width: 0.9 },
+  window: { height: 1.2, width: 1.0, sillHeight: 0.9 },
+  beam: { height: 0.4, width: 0.3 },
+  ceiling: { thickness: 0.15 },
+  table: { height: 0.75, width: 1.2, depth: 0.8 },
+  chair: { height: 0.9, width: 0.45, depth: 0.45 },
+  shelving: { height: 1.8, width: 1.0, depth: 0.4 },
 };

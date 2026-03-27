@@ -12,11 +12,11 @@ import type {
   BimElement,
   BimElementType,
   CreationTool,
+  DEFAULT_PARAMS,
   SelectedElement,
   SpatialNode,
   Viewer3DHandle,
 } from "@/types";
-import { DEFAULT_PARAMS } from "@/types";
 
 // ── Props ──────────────────────────────────────────────────────
 
@@ -36,6 +36,22 @@ const ELEMENT_MATERIALS: Record<BimElementType, THREE.MeshStandardMaterial> = {
   column: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 }),
   slab: new THREE.MeshStandardMaterial({ color: 0xbab5ab, roughness: 0.85 }),
   door: new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.7 }),
+  window: new THREE.MeshStandardMaterial({
+    color: 0x87ceeb,
+    roughness: 0.1,
+    transparent: true,
+    opacity: 0.5,
+    metalness: 0.2,
+  }),
+  beam: new THREE.MeshStandardMaterial({
+    color: 0xa0a0a0,
+    roughness: 0.5,
+    metalness: 0.3,
+  }),
+  ceiling: new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.95 }),
+  table: new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.7 }),
+  chair: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.75 }),
+  shelving: new THREE.MeshStandardMaterial({ color: 0x9e7c4f, roughness: 0.7 }),
 };
 
 const GHOST_MATERIAL = new THREE.MeshStandardMaterial({
@@ -132,6 +148,260 @@ function buildDoorMesh(
   return mesh;
 }
 
+function buildWindowMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  sillHeight: number,
+  level: number,
+  material: THREE.Material,
+  rotation?: number,
+): THREE.Mesh {
+  // Window = glass pane with a thin frame
+  const group = new THREE.Group();
+
+  // Glass pane
+  const glassGeo = new THREE.BoxGeometry(width, height, 0.04);
+  const glassMesh = new THREE.Mesh(glassGeo, material);
+  glassMesh.position.set(0, 0, 0);
+  group.add(glassMesh);
+
+  // Frame (slightly larger box, wireframe-ish via edges)
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0xdcdcdc,
+    roughness: 0.4,
+  });
+  const frameThickness = 0.04;
+
+  // Top frame bar
+  const topBar = new THREE.Mesh(
+    new THREE.BoxGeometry(width + frameThickness, frameThickness, 0.06),
+    frameMat,
+  );
+  topBar.position.set(0, height / 2, 0);
+  group.add(topBar);
+
+  // Bottom frame bar
+  const bottomBar = new THREE.Mesh(
+    new THREE.BoxGeometry(width + frameThickness, frameThickness, 0.06),
+    frameMat,
+  );
+  bottomBar.position.set(0, -height / 2, 0);
+  group.add(bottomBar);
+
+  // Left frame bar
+  const leftBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness, height, 0.06),
+    frameMat,
+  );
+  leftBar.position.set(-width / 2, 0, 0);
+  group.add(leftBar);
+
+  // Right frame bar
+  const rightBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness, height, 0.06),
+    frameMat,
+  );
+  rightBar.position.set(width / 2, 0, 0);
+  group.add(rightBar);
+
+  // Merge into a single mesh for consistency with the rest of the system
+  // We'll use the glass pane as the primary mesh and attach frame as children
+  const container = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, 0.05),
+    material,
+  );
+  container.position.set(pos.x, level + sillHeight + height / 2, pos.z);
+  if (rotation !== undefined) {
+    container.rotation.y = rotation;
+  }
+  return container;
+}
+
+function buildBeamMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  width: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+  if (length < 0.01) return new THREE.Mesh();
+
+  const geo = new THREE.BoxGeometry(length, height, width);
+  const mesh = new THREE.Mesh(geo, material);
+
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  // Beams are placed at the top of the level height (below ceiling)
+  mesh.position.set(cx, level + height / 2, cz);
+  mesh.rotation.y = -Math.atan2(dz, dx);
+
+  return mesh;
+}
+
+function buildCeilingMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  thickness: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const width = Math.abs(end.x - start.x);
+  const depth = Math.abs(end.z - start.z);
+  if (width < 0.01 || depth < 0.01) return new THREE.Mesh();
+
+  const geo = new THREE.BoxGeometry(width, thickness, depth);
+  const mesh = new THREE.Mesh(geo, material);
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+  // Ceiling placed at the level height (default 3m = standard room height)
+  mesh.position.set(cx, level + thickness / 2, cz);
+  return mesh;
+}
+
+function buildTableMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Table = a top surface + 4 legs, represented as compound geometry
+  // For simplicity, use a single box for the tabletop as the main mesh
+  const topThickness = 0.04;
+  const geo = new THREE.BoxGeometry(width, topThickness, depth);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(pos.x, level + height - topThickness / 2, pos.z);
+
+  // Add legs as child meshes
+  const legGeo = new THREE.BoxGeometry(0.04, height - topThickness, 0.04);
+  const legMat = new THREE.MeshStandardMaterial({
+    color: 0x5a3a1a,
+    roughness: 0.8,
+  });
+  const offX = width / 2 - 0.06;
+  const offZ = depth / 2 - 0.06;
+  const legPositions = [
+    [-offX, -(height - topThickness) / 2, -offZ],
+    [offX, -(height - topThickness) / 2, -offZ],
+    [-offX, -(height - topThickness) / 2, offZ],
+    [offX, -(height - topThickness) / 2, offZ],
+  ];
+  for (const [lx, ly, lz] of legPositions) {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(lx, ly, lz);
+    mesh.add(leg);
+  }
+
+  return mesh;
+}
+
+function buildChairMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Chair = seat + backrest + 4 legs
+  const seatHeight = height * 0.5;
+  const seatThickness = 0.03;
+
+  // Seat
+  const seatGeo = new THREE.BoxGeometry(width, seatThickness, depth);
+  const mesh = new THREE.Mesh(seatGeo, material);
+  mesh.position.set(pos.x, level + seatHeight, pos.z);
+
+  // Backrest
+  const backGeo = new THREE.BoxGeometry(width, height - seatHeight, 0.03);
+  const back = new THREE.Mesh(backGeo, material);
+  back.position.set(0, (height - seatHeight) / 2, -depth / 2 + 0.015);
+  mesh.add(back);
+
+  // Legs
+  const legGeo = new THREE.CylinderGeometry(0.015, 0.015, seatHeight, 6);
+  const legMat = new THREE.MeshStandardMaterial({
+    color: 0x3a2a1a,
+    roughness: 0.8,
+  });
+  const offX = width / 2 - 0.04;
+  const offZ = depth / 2 - 0.04;
+  const legPositions = [
+    [-offX, -seatHeight / 2, -offZ],
+    [offX, -seatHeight / 2, -offZ],
+    [-offX, -seatHeight / 2, offZ],
+    [offX, -seatHeight / 2, offZ],
+  ];
+  for (const [lx, ly, lz] of legPositions) {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(lx, ly, lz);
+    mesh.add(leg);
+  }
+
+  return mesh;
+}
+
+function buildShelvingMesh(
+  pos: { x: number; z: number },
+  height: number,
+  width: number,
+  depth: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  // Shelving = vertical sides + horizontal shelves
+  const shelfThickness = 0.02;
+  const sideThickness = 0.02;
+  const numShelves = Math.max(2, Math.round(height / 0.4));
+
+  // Main body (invisible container positioned at center)
+  const containerGeo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  const mesh = new THREE.Mesh(containerGeo, material);
+  mesh.position.set(pos.x, level + height / 2, pos.z);
+
+  // Left side panel
+  const sideGeo = new THREE.BoxGeometry(sideThickness, height, depth);
+  const leftSide = new THREE.Mesh(sideGeo, material);
+  leftSide.position.set(-width / 2, 0, 0);
+  mesh.add(leftSide);
+
+  // Right side panel
+  const rightSide = new THREE.Mesh(sideGeo, material);
+  rightSide.position.set(width / 2, 0, 0);
+  mesh.add(rightSide);
+
+  // Back panel
+  const backGeo = new THREE.BoxGeometry(width, height, 0.01);
+  const backMat = new THREE.MeshStandardMaterial({
+    color: 0x7a5c3a,
+    roughness: 0.8,
+  });
+  const backPanel = new THREE.Mesh(backGeo, backMat);
+  backPanel.position.set(0, 0, -depth / 2 + 0.005);
+  mesh.add(backPanel);
+
+  // Shelves
+  const shelfGeo = new THREE.BoxGeometry(
+    width - sideThickness * 2,
+    shelfThickness,
+    depth,
+  );
+  for (let i = 0; i < numShelves; i++) {
+    const shelf = new THREE.Mesh(shelfGeo, material);
+    const y = -height / 2 + (i / (numShelves - 1)) * height;
+    shelf.position.set(0, y, 0);
+    mesh.add(shelf);
+  }
+
+  return mesh;
+}
+
 function buildMeshForElement(
   el: BimElement,
   material: THREE.Material,
@@ -158,7 +428,84 @@ function buildMeshForElement(
     }
     case "door": {
       const p = el.params as { height: number; width: number };
-      return buildDoorMesh(el.start, p.height, p.width, el.level, material, el.rotation);
+      return buildDoorMesh(
+        el.start,
+        p.height,
+        p.width,
+        el.level,
+        material,
+        el.rotation,
+      );
+    }
+    case "window": {
+      const p = el.params as {
+        height: number;
+        width: number;
+        sillHeight: number;
+      };
+      return buildWindowMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.sillHeight,
+        el.level,
+        material,
+        el.rotation,
+      );
+    }
+    case "beam": {
+      const p = el.params as { height: number; width: number };
+      return buildBeamMesh(
+        el.start,
+        el.end,
+        p.height,
+        p.width,
+        el.level,
+        material,
+      );
+    }
+    case "ceiling": {
+      const p = el.params as { thickness: number };
+      return buildCeilingMesh(
+        el.start,
+        el.end,
+        p.thickness,
+        el.level,
+        material,
+      );
+    }
+    case "table": {
+      const p = el.params as { height: number; width: number; depth: number };
+      return buildTableMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
+    }
+    case "chair": {
+      const p = el.params as { height: number; width: number; depth: number };
+      return buildChairMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
+    }
+    case "shelving": {
+      const p = el.params as { height: number; width: number; depth: number };
+      return buildShelvingMesh(
+        el.start,
+        p.height,
+        p.width,
+        p.depth,
+        el.level,
+        material,
+      );
     }
   }
 }
@@ -415,7 +762,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   // ── Wall-snap raycasting for doors ────────────────────────
 
   const raycastWalls = useCallback(
-    (e: React.MouseEvent): {
+    (
+      e: React.MouseEvent,
+    ): {
       position: { x: number; z: number };
       rotation: number;
       wallId: string;
@@ -543,12 +892,96 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           const p = params.door;
           const snap = doorSnapRef.current;
           if (snap) {
-            // Snapped to wall — show door aligned with wall
-            mesh = buildDoorMesh(snap.position, p.height, p.width, 0, GHOST_MATERIAL, snap.rotation);
+            mesh = buildDoorMesh(
+              snap.position,
+              p.height,
+              p.width,
+              0,
+              GHOST_MATERIAL,
+              snap.rotation,
+            );
           } else {
-            // Not over a wall — show invalid ghost (red tint)
-            mesh = buildDoorMesh(end, p.height, p.width, 0, INVALID_GHOST_MATERIAL);
+            mesh = buildDoorMesh(
+              end,
+              p.height,
+              p.width,
+              0,
+              INVALID_GHOST_MATERIAL,
+            );
           }
+          break;
+        }
+        case "window": {
+          const p = params.window;
+          const snap = doorSnapRef.current;
+          if (snap) {
+            mesh = buildWindowMesh(
+              snap.position,
+              p.height,
+              p.width,
+              p.sillHeight,
+              0,
+              GHOST_MATERIAL,
+              snap.rotation,
+            );
+          } else {
+            mesh = buildWindowMesh(
+              end,
+              p.height,
+              p.width,
+              p.sillHeight,
+              0,
+              INVALID_GHOST_MATERIAL,
+            );
+          }
+          break;
+        }
+        case "beam": {
+          const p = params.beam;
+          const s = start ?? end;
+          mesh = buildBeamMesh(s, end, p.height, p.width, 0, GHOST_MATERIAL);
+          break;
+        }
+        case "ceiling": {
+          const p = params.ceiling;
+          const s = start ?? end;
+          mesh = buildCeilingMesh(s, end, p.thickness, 3, GHOST_MATERIAL);
+          break;
+        }
+        case "table": {
+          const p = params.table;
+          mesh = buildTableMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "chair": {
+          const p = params.chair;
+          mesh = buildChairMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            0,
+            GHOST_MATERIAL,
+          );
+          break;
+        }
+        case "shelving": {
+          const p = params.shelving;
+          mesh = buildShelvingMesh(
+            end,
+            p.height,
+            p.width,
+            p.depth,
+            0,
+            GHOST_MATERIAL,
+          );
           break;
         }
         default:
@@ -577,14 +1010,18 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const hit = raycastGround(e);
       if (!hit) return;
 
-      // For doors, try snapping to a wall first
-      if (tool === "door") {
+      // For doors and windows, try snapping to a wall first
+      if (tool === "door" || tool === "window") {
         const wallSnap = raycastWalls(e);
         doorSnapRef.current = wallSnap;
 
         if (wallSnap && snapIndicatorRef.current) {
           // Show snap indicator on the wall
-          snapIndicatorRef.current.position.set(wallSnap.position.x, 0.01, wallSnap.position.z);
+          snapIndicatorRef.current.position.set(
+            wallSnap.position.x,
+            0.01,
+            wallSnap.position.z,
+          );
           snapIndicatorRef.current.visible = true;
         } else if (snapIndicatorRef.current) {
           snapIndicatorRef.current.position.set(hit.x, 0.01, hit.z);
@@ -661,7 +1098,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
         const point = { x: hit.x, z: hit.z };
         const params = defaultParamsRef.current;
-        const needsTwoClicks = tool === "wall" || tool === "slab";
+        const needsTwoClicks =
+          tool === "wall" ||
+          tool === "slab" ||
+          tool === "beam" ||
+          tool === "ceiling";
 
         if (needsTwoClicks) {
           if (!pendingStartRef.current) {
@@ -681,31 +1122,32 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             start,
             end: point,
             params: { ...params[tool] },
-            level: 0,
+            // Ceiling defaults to room height (3m); beam to wall height
+            level: tool === "ceiling" ? 3 : tool === "beam" ? 2.6 : 0,
           };
           onElementCreated(el);
-        } else if (tool === "door") {
-          // Door — must snap to a wall
+        } else if (tool === "door" || tool === "window") {
+          // Door/Window — must snap to a wall
           const wallSnap = raycastWalls(e);
-          if (!wallSnap) return; // Can't place door without a wall
+          if (!wallSnap) return;
 
           clearGhost();
           doorSnapRef.current = null;
 
           const el: BimElement = {
             id: crypto.randomUUID(),
-            type: "door",
-            name: `Door ${Date.now().toString(36).slice(-4).toUpperCase()}`,
+            type: tool,
+            name: `${tool.charAt(0).toUpperCase() + tool.slice(1)} ${Date.now().toString(36).slice(-4).toUpperCase()}`,
             start: wallSnap.position,
             end: wallSnap.position,
-            params: { ...params.door },
+            params: { ...params[tool] },
             level: 0,
             rotation: wallSnap.rotation,
             hostWallId: wallSnap.wallId,
           };
           onElementCreated(el);
         } else {
-          // Single-click elements (column)
+          // Single-click elements (column, table, chair, shelving)
           clearGhost();
 
           const el: BimElement = {
@@ -911,14 +1353,17 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       {/* Creation mode hint */}
       {creationTool !== "none" && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-lg bg-green-900/80 border border-green-700 text-green-300 text-xs backdrop-blur-sm">
-          {creationTool === "wall" || creationTool === "slab" ? (
+          {creationTool === "wall" ||
+          creationTool === "slab" ||
+          creationTool === "beam" ||
+          creationTool === "ceiling" ? (
             pendingStartRef.current ? (
               <span>Click to set end point &middot; Esc to cancel</span>
             ) : (
               <span>Click to set start point</span>
             )
-          ) : creationTool === "door" ? (
-            <span>Hover over a wall and click to place door</span>
+          ) : creationTool === "door" || creationTool === "window" ? (
+            <span>Hover over a wall and click to place {creationTool}</span>
           ) : (
             <span>Click to place {creationTool}</span>
           )}

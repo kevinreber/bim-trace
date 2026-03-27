@@ -22,19 +22,19 @@
 ## PR 1 — More Architectural Elements
 
 ### New Element Types
-- [ ] **Window** — glass pane with frame, placed on existing wall face
-- [ ] **Beam** — rectangular/I-profile between two points (horizontal)
+- [x] **Window** — glass pane with frame, placed on existing wall face
+- [x] **Beam** — rectangular/I-profile between two points (horizontal)
 - [ ] **Roof** — pitched or flat roof from polygon outline (multi-click perimeter)
 - [ ] **Stair** — stepped geometry between two levels (rise/run params)
 - [ ] **Railing** — posts + top rail along a path or attached to stair
-- [ ] **Ceiling** — flat panel at room height (like inverted slab)
+- [x] **Ceiling** — flat panel at room height (like inverted slab)
 - [ ] **Curtain Wall** — glass panel grid with mullion subdivisions
 
 ### Element Presets / Furniture
-- [ ] **Table** — rectangular surface on four legs
-- [ ] **Chair** — seat + back + four legs
+- [x] **Table** — rectangular surface on four legs
+- [x] **Chair** — seat + back + four legs
 - [ ] **Desk** — L-shaped or straight desk preset
-- [ ] **Shelving** — rectangular unit with shelves
+- [x] **Shelving** — rectangular unit with shelves
 - [ ] **Toilet/Sink** — basic bathroom fixtures
 - [ ] **Preset library UI** — categorized panel to pick from (Furniture, Fixtures, MEP)
 

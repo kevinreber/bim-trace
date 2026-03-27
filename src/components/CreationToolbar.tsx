@@ -5,33 +5,55 @@ interface CreationToolbarProps {
   onToolChange: (tool: CreationTool) => void;
 }
 
-const TOOLS: { id: CreationTool; label: string; icon: string }[] = [
-  { id: "none", label: "Select", icon: "V" },
+interface ToolDef {
+  id: CreationTool;
+  label: string;
+  icon: string;
+}
+
+const STRUCTURAL_TOOLS: ToolDef[] = [
   { id: "wall", label: "Wall", icon: "W" },
   { id: "column", label: "Column", icon: "C" },
   { id: "slab", label: "Slab", icon: "S" },
-  { id: "door", label: "Door", icon: "D" },
+  { id: "beam", label: "Beam", icon: "B" },
+  { id: "ceiling", label: "Ceiling", icon: "G" },
 ];
 
-export default function CreationToolbar({
+const OPENING_TOOLS: ToolDef[] = [
+  { id: "door", label: "Door", icon: "D" },
+  { id: "window", label: "Window", icon: "N" },
+];
+
+const FURNITURE_TOOLS: ToolDef[] = [
+  { id: "table", label: "Table", icon: "T" },
+  { id: "chair", label: "Chair", icon: "H" },
+  { id: "shelving", label: "Shelving", icon: "L" },
+];
+
+function ToolGroup({
+  label,
+  tools,
   activeTool,
   onToolChange,
-}: CreationToolbarProps) {
+}: {
+  label: string;
+  tools: ToolDef[];
+  activeTool: CreationTool;
+  onToolChange: (tool: CreationTool) => void;
+}) {
   return (
-    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700 backdrop-blur-sm shadow-lg">
-      <span className="text-[10px] text-slate-500 uppercase tracking-wider mr-1.5">
-        Create
+    <>
+      <span className="text-[9px] text-slate-500 uppercase tracking-wider mx-1">
+        {label}
       </span>
-      {TOOLS.map((tool) => (
+      {tools.map((tool) => (
         <button
           key={tool.id}
           type="button"
           onClick={() => onToolChange(tool.id)}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors ${
             activeTool === tool.id
-              ? tool.id === "none"
-                ? "bg-slate-600 text-white"
-                : "bg-green-600 text-white"
+              ? "bg-green-600 text-white"
               : "bg-slate-700/50 text-slate-300 hover:bg-slate-700"
           }`}
           title={tool.label}
@@ -42,6 +64,56 @@ export default function CreationToolbar({
           <span>{tool.label}</span>
         </button>
       ))}
+    </>
+  );
+}
+
+export default function CreationToolbar({
+  activeTool,
+  onToolChange,
+}: CreationToolbarProps) {
+  return (
+    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700 backdrop-blur-sm shadow-lg">
+      {/* Select tool */}
+      <button
+        type="button"
+        onClick={() => onToolChange("none")}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors ${
+          activeTool === "none"
+            ? "bg-slate-600 text-white"
+            : "bg-slate-700/50 text-slate-300 hover:bg-slate-700"
+        }`}
+        title="Select"
+      >
+        <span className="font-mono text-[10px] font-bold w-3 text-center">
+          V
+        </span>
+        <span>Select</span>
+      </button>
+
+      <div className="w-px h-5 bg-slate-600 mx-1" />
+      <ToolGroup
+        label="Structure"
+        tools={STRUCTURAL_TOOLS}
+        activeTool={activeTool}
+        onToolChange={onToolChange}
+      />
+
+      <div className="w-px h-5 bg-slate-600 mx-1" />
+      <ToolGroup
+        label="Openings"
+        tools={OPENING_TOOLS}
+        activeTool={activeTool}
+        onToolChange={onToolChange}
+      />
+
+      <div className="w-px h-5 bg-slate-600 mx-1" />
+      <ToolGroup
+        label="Furniture"
+        tools={FURNITURE_TOOLS}
+        activeTool={activeTool}
+        onToolChange={onToolChange}
+      />
     </div>
   );
 }
