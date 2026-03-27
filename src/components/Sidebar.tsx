@@ -43,6 +43,12 @@ const TYPE_ICONS: Record<string, string> = {
   column: "C",
   slab: "S",
   door: "D",
+  window: "N",
+  beam: "B",
+  ceiling: "G",
+  table: "T",
+  chair: "H",
+  shelving: "L",
 };
 
 function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
