@@ -1,6 +1,6 @@
-import { useEffect, useRef, useCallback, useState } from "react";
-import * as THREE from "three";
 import * as OBC from "@thatopen/components";
+import { useCallback, useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 
 export interface SpatialNode {
   expressID: number;
@@ -73,7 +73,7 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
         if (!fragments.initialized) {
           const workerUrl = new URL(
             "@thatopen/fragments/worker",
-            import.meta.url
+            import.meta.url,
           );
           await fragments.init(workerUrl.href);
         }
@@ -101,7 +101,7 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
               center.z + maxDim,
               center.x,
               center.y,
-              center.z
+              center.z,
             );
           }
         } catch {
@@ -119,7 +119,7 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
         setLoading(false);
       }
     },
-    [onModelLoaded]
+    [onModelLoaded],
   );
 
   const handleDrop = useCallback(
@@ -127,11 +127,11 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
       e.preventDefault();
       setIsDragging(false);
       const file = e.dataTransfer.files[0];
-      if (file && file.name.toLowerCase().endsWith(".ifc")) {
+      if (file?.name.toLowerCase().endsWith(".ifc")) {
         loadIfc(file);
       }
     },
-    [loadIfc]
+    [loadIfc],
   );
 
   const handleFileInput = useCallback(
@@ -139,12 +139,13 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
       const file = e.target.files?.[0];
       if (file) loadIfc(file);
     },
-    [loadIfc]
+    [loadIfc],
   );
 
   return (
     <div
       ref={containerRef}
+      role="application"
       className="relative flex-1 h-full"
       onDragOver={(e) => {
         e.preventDefault();
@@ -192,7 +193,7 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: FragmentsModel API is loosely typed
 async function buildSpatialTree(model: any): Promise<SpatialNode[]> {
   try {
     // Try v3 API: getSpatialStructure
@@ -221,16 +222,20 @@ async function buildSpatialTree(model: any): Promise<SpatialNode[]> {
   return [];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: spatial structure shape varies by IFC version
 function parseSpatialStructure(structure: any): SpatialNode[] {
   if (!structure) return [];
 
   const nodes: SpatialNode[] = [];
 
-  function walk(item: Record<string, unknown>, parentType?: string): SpatialNode {
+  function walk(
+    item: Record<string, unknown>,
+    parentType?: string,
+  ): SpatialNode {
     const type = (item.type as string) || parentType || "Unknown";
     const name = (item.name as string) || (item.Name as string) || type;
-    const expressID = (item.expressID as number) || (item.localId as number) || 0;
+    const expressID =
+      (item.expressID as number) || (item.localId as number) || 0;
     const children: SpatialNode[] = [];
 
     const childItems =
@@ -257,12 +262,15 @@ function parseSpatialStructure(structure: any): SpatialNode[] {
 }
 
 function parseCategoriesAsTree(
-  categories: Record<string, number[]>
+  categories: Record<string, number[]>,
 ): SpatialNode[] {
   return Object.entries(categories).map(([category, ids]) => ({
     expressID: 0,
     type: category,
-    name: category.replace("IFC", "").replace(/([A-Z])/g, " $1").trim(),
+    name: category
+      .replace("IFC", "")
+      .replace(/([A-Z])/g, " $1")
+      .trim(),
     children: ids.map((id) => ({
       expressID: id,
       type: category,

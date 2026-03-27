@@ -30,6 +30,7 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
   return (
     <div>
       <button
+        type="button"
         onClick={() => hasChildren && setExpanded(!expanded)}
         className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-slate-700/50 rounded transition-colors group"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -57,11 +58,7 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
       {expanded && hasChildren && (
         <div>
           {node.children.map((child) => (
-            <TreeNode
-              key={child.expressID}
-              node={child}
-              depth={depth + 1}
-            />
+            <TreeNode key={child.expressID} node={child} depth={depth + 1} />
           ))}
         </div>
       )}

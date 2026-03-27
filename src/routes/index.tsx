@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import Viewer3D, { SpatialNode } from "@/components/Viewer3D";
 import Sidebar from "@/components/Sidebar";
+import Viewer3D, { type SpatialNode } from "@/components/Viewer3D";
 
 export const Route = createFileRoute("/")({
   component: Home,
