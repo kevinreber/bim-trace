@@ -35,7 +35,7 @@ const ELEMENT_MATERIALS: Record<BimElementType, THREE.MeshStandardMaterial> = {
   wall: new THREE.MeshStandardMaterial({ color: 0xe8e0d4, roughness: 0.9 }),
   column: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 }),
   slab: new THREE.MeshStandardMaterial({ color: 0xbab5ab, roughness: 0.85 }),
-  door: new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.7 }),
+  door: new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.65 }),
   window: new THREE.MeshStandardMaterial({
     color: 0x87ceeb,
     roughness: 0.1,
@@ -139,7 +139,8 @@ function buildDoorMesh(
   material: THREE.Material,
   rotation?: number,
 ): THREE.Mesh {
-  const geo = new THREE.BoxGeometry(width, height, 0.08);
+  const doorDepth = 0.12;
+  const geo = new THREE.BoxGeometry(width, height, doorDepth);
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(pos.x, level + height / 2, pos.z);
   if (rotation !== undefined) {

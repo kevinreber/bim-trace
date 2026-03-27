@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **Window rendering** — frame bars now render as child meshes of the glass pane (previously dead code)
 - **Sidebar icons** — added TYPE_ICONS entries for all 6 new element types
+- **Door visibility** — darker wood color (0x5c3317) and thicker geometry (0.12m) so doors stand out against walls
 
 ---
 
