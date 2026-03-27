@@ -8,6 +8,8 @@ interface SidebarProps {
   selectedElement: SelectedElement | null;
   markups: Markup[];
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
+  onMarkupNavigate: (markup: Markup) => void;
+  onMarkupLink: (markupId: string) => void;
 }
 
 type Tab = "tree" | "properties" | "markups";
@@ -90,8 +92,14 @@ export default function Sidebar({
   selectedElement,
   markups,
   onMarkupStatusChange,
+  onMarkupNavigate,
+  onMarkupLink,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>("tree");
+
+  const linkedCount = selectedElement
+    ? markups.filter((m) => m.linkedBimGuid === selectedElement.globalId).length
+    : 0;
 
   return (
     <aside className="w-80 h-full bg-[var(--sidebar-bg)] border-r border-[var(--border)] flex flex-col shrink-0">
@@ -148,11 +156,40 @@ export default function Sidebar({
           ))}
 
         {activeTab === "properties" && (
-          <PropertyPanel element={selectedElement} />
+          <div>
+            <PropertyPanel element={selectedElement} />
+            {/* Trace Engine: show linked markups for selected element */}
+            {selectedElement && linkedCount > 0 && (
+              <div className="border-t border-slate-700/50 mt-2">
+                <div className="px-3 py-2">
+                  <p className="text-xs font-medium text-slate-400">
+                    Linked Markups
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px]">
+                      {linkedCount}
+                    </span>
+                  </p>
+                </div>
+                <MarkupList
+                  markups={markups}
+                  onStatusChange={onMarkupStatusChange}
+                  onNavigate={onMarkupNavigate}
+                  onLink={onMarkupLink}
+                  selectedElement={selectedElement}
+                  filterByGuid={selectedElement.globalId}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === "markups" && (
-          <MarkupList markups={markups} onStatusChange={onMarkupStatusChange} />
+          <MarkupList
+            markups={markups}
+            onStatusChange={onMarkupStatusChange}
+            onNavigate={onMarkupNavigate}
+            onLink={onMarkupLink}
+            selectedElement={selectedElement}
+          />
         )}
       </div>
 
@@ -163,9 +200,14 @@ export default function Sidebar({
         </div>
       )}
       {activeTab === "markups" && markups.length > 0 && (
-        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500">
-          {markups.filter((m) => m.status === "open").length} open /{" "}
-          {markups.length} total
+        <div className="px-4 py-2 border-t border-[var(--border)] text-xs text-slate-500 flex items-center justify-between">
+          <span>
+            {markups.filter((m) => m.status === "open").length} open /{" "}
+            {markups.length} total
+          </span>
+          <span className="text-slate-600">
+            {markups.filter((m) => m.linkedBimGuid).length} linked
+          </span>
         </div>
       )}
     </aside>

@@ -10,6 +10,7 @@ import type {
   Markup,
   SelectedElement,
   SpatialNode,
+  Viewer3DHandle,
 } from "@/types";
 
 export const Route = createFileRoute("/")({
@@ -28,6 +29,7 @@ function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasPdf, setHasPdf] = useState(false);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
+  const viewer3DRef = useRef<Viewer3DHandle>(null);
 
   const handleModelLoaded = useCallback((spatialTree: SpatialNode[]) => {
     setTree(spatialTree);
@@ -66,6 +68,43 @@ function Home() {
     [],
   );
 
+  /** Trace Engine: fly the 3D camera to a markup's linked element */
+  const handleMarkupNavigate = useCallback((markup: Markup) => {
+    if (!markup.linkedBimGuid) return;
+    viewer3DRef.current?.flyToElement(markup.linkedBimGuid);
+    // Switch to split or 3D view if currently in 2D-only mode
+    setViewMode((prev) => (prev === "2d" ? "split" : prev));
+  }, []);
+
+  /** Trace Engine: link/unlink a markup to the currently selected 3D element */
+  const handleMarkupLink = useCallback(
+    (markupId: string) => {
+      setMarkups((prev) =>
+        prev.map((m) => {
+          if (m.id !== markupId) return m;
+          if (m.linkedBimGuid) {
+            // Unlink
+            return {
+              ...m,
+              linkedBimGuid: undefined,
+              linkedElementName: undefined,
+            };
+          }
+          if (selectedElement) {
+            // Link to currently selected element
+            return {
+              ...m,
+              linkedBimGuid: selectedElement.globalId,
+              linkedElementName: selectedElement.name,
+            };
+          }
+          return m;
+        }),
+      );
+    },
+    [selectedElement],
+  );
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar
@@ -73,6 +112,8 @@ function Home() {
         selectedElement={selectedElement}
         markups={markups}
         onMarkupStatusChange={handleMarkupStatusChange}
+        onMarkupNavigate={handleMarkupNavigate}
+        onMarkupLink={handleMarkupLink}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -109,6 +150,7 @@ function Home() {
               className={`${viewMode === "split" ? "w-1/2 border-r border-slate-700" : "flex-1"} h-full`}
             >
               <Viewer3D
+                ref={viewer3DRef}
                 onModelLoaded={handleModelLoaded}
                 onElementSelected={handleElementSelected}
               />
@@ -136,6 +178,7 @@ function Home() {
                     pdfCanvasRef={pdfCanvasRef}
                     onMarkupCreated={handleMarkupCreated}
                     currentPage={currentPage}
+                    selectedElement={selectedElement}
                   />
                 )}
               </div>

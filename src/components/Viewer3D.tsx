@@ -1,11 +1,25 @@
 import * as OBC from "@thatopen/components";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import * as THREE from "three";
-import type { SelectedElement, SpatialNode } from "@/types";
+import type { SelectedElement, SpatialNode, Viewer3DHandle } from "@/types";
 
 interface Viewer3DProps {
   onModelLoaded: (tree: SpatialNode[]) => void;
   onElementSelected: (element: SelectedElement | null) => void;
+}
+
+function buildGlobalId(mesh: THREE.Mesh): string {
+  const gid = mesh.userData.GlobalId ?? mesh.userData.globalId;
+  if (typeof gid === "string" && gid.length > 0) return gid;
+  const eid = (mesh.userData.expressID as number) ?? mesh.id;
+  return `express-${eid}`;
 }
 
 function extractProperties(
@@ -34,10 +48,10 @@ function extractProperties(
   return props;
 }
 
-export default function Viewer3D({
-  onModelLoaded,
-  onElementSelected,
-}: Viewer3DProps) {
+const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
+  { onModelLoaded, onElementSelected },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const componentsRef = useRef<OBC.Components | null>(null);
   const worldRef = useRef<OBC.SimpleWorld<
@@ -48,6 +62,8 @@ export default function Viewer3D({
   const modelRef = useRef<unknown>(null);
   const highlightMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const highlightedRef = useRef<THREE.Mesh[]>([]);
+  /** Map globalId → mesh for fast lookup when navigating from 2D markups */
+  const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasModel, setHasModel] = useState(false);
@@ -93,6 +109,93 @@ export default function Viewer3D({
     };
   }, []);
 
+  /** Clear previous highlights and optionally highlight a mesh */
+  const highlightMesh = useCallback((mesh: THREE.Mesh | null) => {
+    const world = worldRef.current;
+    if (!world) return;
+    const scene = world.scene.three;
+
+    // Clear previous
+    for (const h of highlightedRef.current) {
+      scene.remove(h);
+      h.geometry.dispose();
+    }
+    highlightedRef.current = [];
+
+    if (!mesh) return;
+
+    const highlightMat = highlightMatRef.current;
+    if (highlightMat) {
+      const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
+      highlight.position.copy(mesh.position);
+      highlight.rotation.copy(mesh.rotation);
+      highlight.scale.copy(mesh.scale);
+      highlight.renderOrder = 999;
+      if (mesh.parent) {
+        highlight.applyMatrix4(mesh.matrixWorld);
+      }
+      scene.add(highlight);
+      highlightedRef.current.push(highlight);
+    }
+  }, []);
+
+  /** Fly the camera to a specific mesh */
+  const flyToMesh = useCallback((mesh: THREE.Mesh) => {
+    const world = worldRef.current;
+    if (!world) return;
+
+    const box = new THREE.Box3().setFromObject(mesh);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+
+    world.camera.controls.setLookAt(
+      center.x + maxDim * 1.5,
+      center.y + maxDim * 0.8,
+      center.z + maxDim * 1.5,
+      center.x,
+      center.y,
+      center.z,
+      true, // animate
+    );
+  }, []);
+
+  // Expose flyToElement to parent via ref
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyToElement(globalId: string) {
+        const mesh = meshMapRef.current.get(globalId);
+        if (!mesh) return;
+        highlightMesh(mesh);
+        flyToMesh(mesh);
+
+        const element: SelectedElement = {
+          expressID: (mesh.userData.expressID as number) || 0,
+          globalId,
+          type: (mesh.userData.type as string) || mesh.name || "Element",
+          name: mesh.name || `Element #${mesh.id}`,
+          properties: extractProperties(mesh),
+        };
+        onElementSelected(element);
+      },
+    }),
+    [highlightMesh, flyToMesh, onElementSelected],
+  );
+
+  /** Rebuild the meshMap from the current scene */
+  const rebuildMeshMap = useCallback(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    meshMapRef.current.clear();
+    world.scene.three.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        const gid = buildGlobalId(obj);
+        meshMapRef.current.set(gid, obj);
+      }
+    });
+  }, []);
+
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       const world = worldRef.current;
@@ -116,35 +219,18 @@ export default function Viewer3D({
 
       const intersects = raycaster.intersectObjects(meshes, false);
 
-      // Clear previous highlights
-      const scene = world.scene.three;
-      for (const h of highlightedRef.current) {
-        scene.remove(h);
-        h.geometry.dispose();
-      }
-      highlightedRef.current = [];
+      highlightMesh(null);
 
       if (intersects.length > 0) {
         const hit = intersects[0];
         const mesh = hit.object as THREE.Mesh;
 
-        // Highlight the selected mesh
-        const highlightMat = highlightMatRef.current;
-        if (highlightMat) {
-          const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
-          highlight.position.copy(mesh.position);
-          highlight.rotation.copy(mesh.rotation);
-          highlight.scale.copy(mesh.scale);
-          highlight.renderOrder = 999;
-          if (mesh.parent) {
-            highlight.applyMatrix4(mesh.matrixWorld);
-          }
-          scene.add(highlight);
-          highlightedRef.current.push(highlight);
-        }
+        highlightMesh(mesh);
 
+        const globalId = buildGlobalId(mesh);
         const element: SelectedElement = {
           expressID: (mesh.userData.expressID as number) || 0,
+          globalId,
           type: (mesh.userData.type as string) || mesh.name || "Element",
           name: mesh.name || `Element #${mesh.id}`,
           properties: extractProperties(mesh),
@@ -154,7 +240,7 @@ export default function Viewer3D({
         onElementSelected(null);
       }
     },
-    [onElementSelected],
+    [onElementSelected, highlightMesh],
   );
 
   const loadIfc = useCallback(
@@ -205,6 +291,9 @@ export default function Viewer3D({
           world.camera.controls.setLookAt(20, 15, 20, 0, 0, 0);
         }
 
+        // Index meshes by globalId for trace-engine lookups
+        rebuildMeshMap();
+
         const tree = await buildSpatialTree(model);
         onModelLoaded(tree);
         setHasModel(true);
@@ -215,7 +304,7 @@ export default function Viewer3D({
         setLoading(false);
       }
     },
-    [onModelLoaded],
+    [onModelLoaded, rebuildMeshMap],
   );
 
   const handleDrop = useCallback(
@@ -291,7 +380,9 @@ export default function Viewer3D({
       )}
     </div>
   );
-}
+});
+
+export default Viewer3D;
 
 // biome-ignore lint/suspicious/noExplicitAny: FragmentsModel API is loosely typed
 async function buildSpatialTree(model: any): Promise<SpatialNode[]> {

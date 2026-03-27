@@ -1,12 +1,14 @@
 import * as fabric from "fabric";
 import { useCallback, useEffect, useRef } from "react";
-import type { AnnotationTool, Markup } from "@/types";
+import type { AnnotationTool, Markup, SelectedElement } from "@/types";
 
 interface AnnotationLayerProps {
   activeTool: AnnotationTool;
   pdfCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   onMarkupCreated: (markup: Omit<Markup, "id" | "createdAt">) => void;
   currentPage: number;
+  /** When a 3D element is selected, new markups auto-link to it */
+  selectedElement: SelectedElement | null;
 }
 
 export default function AnnotationLayer({
@@ -14,11 +16,14 @@ export default function AnnotationLayer({
   pdfCanvasRef,
   onMarkupCreated,
   currentPage,
+  selectedElement,
 }: AnnotationLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const activeToolRef = useRef(activeTool);
   activeToolRef.current = activeTool;
+  const selectedElementRef = useRef(selectedElement);
+  selectedElementRef.current = selectedElement;
 
   // Sync Fabric canvas size with PDF canvas
   useEffect(() => {
@@ -187,12 +192,16 @@ export default function AnnotationLayer({
         fc.setActiveObject(obj);
         fc.renderAll();
 
+        // Auto-link to currently selected 3D element
+        const el = selectedElementRef.current;
         onMarkupCreated({
           pageNumber: currentPage,
           type: markupType,
           coords: { x: pointer.x, y: pointer.y },
           comment: "",
           status: "open",
+          linkedBimGuid: el?.globalId,
+          linkedElementName: el?.name,
         });
       }
     },

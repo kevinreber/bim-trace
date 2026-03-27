@@ -7,6 +7,7 @@ export interface SpatialNode {
 
 export interface SelectedElement {
   expressID: number;
+  globalId: string;
   type: string;
   name: string;
   properties: Record<string, string | number | boolean>;
@@ -20,7 +21,13 @@ export interface Markup {
   comment: string;
   status: "open" | "resolved" | "pending";
   linkedBimGuid?: string;
+  linkedElementName?: string;
   createdAt: number;
 }
 
 export type AnnotationTool = "select" | "cloud" | "arrow" | "callout" | "text";
+
+/** Handle exposed by Viewer3D via forwardRef for programmatic camera control */
+export interface Viewer3DHandle {
+  flyToElement: (globalId: string) => void;
+}
