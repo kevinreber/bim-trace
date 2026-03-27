@@ -1339,14 +1339,12 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
     const highlightMat = highlightMatRef.current;
     if (highlightMat) {
-      const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
-      highlight.position.copy(mesh.position);
-      highlight.rotation.copy(mesh.rotation);
-      highlight.scale.copy(mesh.scale);
+      const highlight = new THREE.Mesh(mesh.geometry.clone(), highlightMat);
+      // Use matrixWorld to get the final world-space transform (works for
+      // both root-level authored meshes and nested IFC children).
+      mesh.updateWorldMatrix(true, false);
+      highlight.applyMatrix4(mesh.matrixWorld);
       highlight.renderOrder = 999;
-      if (mesh.parent) {
-        highlight.applyMatrix4(mesh.matrixWorld);
-      }
       scene.add(highlight);
       highlightedRef.current.push(highlight);
     }

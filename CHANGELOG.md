@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wall boolean cutouts** — doors and windows now cut proper openings in their host wall geometry using ExtrudeGeometry with Shape holes, making them visible from the front of the wall
 - **Project Browser element selection** — clicking an authored element in the Project Browser tree now selects it, shows its properties in the Properties panel, and flies the 3D camera to it
 
+### Fixed
+- **Selection highlight offset** — highlight mesh was double-applying transforms (position/rotation + matrixWorld), causing it to appear offset from the selected element; now uses matrixWorld alone for correct placement
+
 ### Changed
 - **Revit-inspired UI redesign** — complete overhaul of the application layout and styling to match Autodesk Revit's UX patterns
 - **Ribbon toolbar** — replaced flat creation toolbar with a tabbed ribbon (Modify, Architecture, Annotate, View tabs) featuring SVG icons and grouped tool panels like Revit
