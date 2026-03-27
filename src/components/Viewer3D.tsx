@@ -45,6 +45,13 @@ const GHOST_MATERIAL = new THREE.MeshStandardMaterial({
   depthWrite: false,
 });
 
+const INVALID_GHOST_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xef4444,
+  transparent: true,
+  opacity: 0.35,
+  depthWrite: false,
+});
+
 const SNAP_INDICATOR_MAT = new THREE.MeshBasicMaterial({
   color: 0x4ade80,
   depthTest: false,
@@ -114,10 +121,14 @@ function buildDoorMesh(
   width: number,
   level: number,
   material: THREE.Material,
+  rotation?: number,
 ): THREE.Mesh {
   const geo = new THREE.BoxGeometry(width, height, 0.08);
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(pos.x, level + height / 2, pos.z);
+  if (rotation !== undefined) {
+    mesh.rotation.y = rotation;
+  }
   return mesh;
 }
 
@@ -147,7 +158,7 @@ function buildMeshForElement(
     }
     case "door": {
       const p = el.params as { height: number; width: number };
-      return buildDoorMesh(el.start, p.height, p.width, el.level, material);
+      return buildDoorMesh(el.start, p.height, p.width, el.level, material, el.rotation);
     }
   }
 }
@@ -221,6 +232,13 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   const ghostMeshRef = useRef<THREE.Mesh | null>(null);
   const snapIndicatorRef = useRef<THREE.Mesh | null>(null);
   const groundPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+
+  /** Cached snap result for door→wall placement */
+  const doorSnapRef = useRef<{
+    position: { x: number; z: number };
+    rotation: number;
+    wallId: string;
+  } | null>(null);
 
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -394,6 +412,82 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [],
   );
 
+  // ── Wall-snap raycasting for doors ────────────────────────
+
+  const raycastWalls = useCallback(
+    (e: React.MouseEvent): {
+      position: { x: number; z: number };
+      rotation: number;
+      wallId: string;
+    } | null => {
+      const world = worldRef.current;
+      const container = containerRef.current;
+      if (!world || !container) return null;
+
+      const rect = container.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(x, y), world.camera.three);
+
+      // Collect wall meshes from authored elements
+      const wallMeshes: THREE.Mesh[] = [];
+      authoredMeshesRef.current.forEach((mesh) => {
+        if (mesh.userData.type === "WALL") {
+          wallMeshes.push(mesh);
+        }
+      });
+
+      if (wallMeshes.length === 0) return null;
+
+      const intersects = raycaster.intersectObjects(wallMeshes, false);
+      if (intersects.length === 0) return null;
+
+      const hit = intersects[0];
+      const wallMesh = hit.object as THREE.Mesh;
+      const wallId = wallMesh.userData.bimElementId as string;
+
+      // Find the corresponding BimElement to get wall geometry data
+      const wallEl = bimElements.find((el) => el.id === wallId);
+      if (!wallEl) return null;
+
+      // Compute wall direction and rotation
+      const dx = wallEl.end.x - wallEl.start.x;
+      const dz = wallEl.end.z - wallEl.start.z;
+      const wallRotation = -Math.atan2(dz, dx);
+      const wallLength = Math.sqrt(dx * dx + dz * dz);
+
+      // Project the hit point onto the wall's center line
+      // Wall direction unit vector
+      const dirX = dx / wallLength;
+      const dirZ = dz / wallLength;
+
+      // Vector from wall start to hit point
+      const hx = hit.point.x - wallEl.start.x;
+      const hz = hit.point.z - wallEl.start.z;
+
+      // Project onto wall direction (scalar distance along wall)
+      let t = hx * dirX + hz * dirZ;
+
+      // Clamp to keep door within wall bounds (accounting for door width)
+      const doorWidth = defaultParamsRef.current.door.width;
+      const halfDoor = doorWidth / 2;
+      t = Math.max(halfDoor, Math.min(wallLength - halfDoor, t));
+
+      // Position along the wall center line
+      const snapX = wallEl.start.x + dirX * t;
+      const snapZ = wallEl.start.z + dirZ * t;
+
+      return {
+        position: { x: snapX, z: snapZ },
+        rotation: wallRotation,
+        wallId,
+      };
+    },
+    [bimElements],
+  );
+
   // ── Ghost preview ──────────────────────────────────────────
 
   const clearGhost = useCallback(() => {
@@ -447,7 +541,14 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         }
         case "door": {
           const p = params.door;
-          mesh = buildDoorMesh(end, p.height, p.width, 0, GHOST_MATERIAL);
+          const snap = doorSnapRef.current;
+          if (snap) {
+            // Snapped to wall — show door aligned with wall
+            mesh = buildDoorMesh(snap.position, p.height, p.width, 0, GHOST_MATERIAL, snap.rotation);
+          } else {
+            // Not over a wall — show invalid ghost (red tint)
+            mesh = buildDoorMesh(end, p.height, p.width, 0, INVALID_GHOST_MATERIAL);
+          }
           break;
         }
         default:
@@ -469,21 +570,38 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       if (tool === "none") {
         if (snapIndicatorRef.current) snapIndicatorRef.current.visible = false;
         clearGhost();
+        doorSnapRef.current = null;
         return;
       }
 
       const hit = raycastGround(e);
       if (!hit) return;
 
-      // Snap indicator
-      if (snapIndicatorRef.current) {
-        snapIndicatorRef.current.position.set(hit.x, 0.01, hit.z);
-        snapIndicatorRef.current.visible = true;
+      // For doors, try snapping to a wall first
+      if (tool === "door") {
+        const wallSnap = raycastWalls(e);
+        doorSnapRef.current = wallSnap;
+
+        if (wallSnap && snapIndicatorRef.current) {
+          // Show snap indicator on the wall
+          snapIndicatorRef.current.position.set(wallSnap.position.x, 0.01, wallSnap.position.z);
+          snapIndicatorRef.current.visible = true;
+        } else if (snapIndicatorRef.current) {
+          snapIndicatorRef.current.position.set(hit.x, 0.01, hit.z);
+          snapIndicatorRef.current.visible = true;
+        }
+      } else {
+        doorSnapRef.current = null;
+        // Snap indicator for non-door tools
+        if (snapIndicatorRef.current) {
+          snapIndicatorRef.current.position.set(hit.x, 0.01, hit.z);
+          snapIndicatorRef.current.visible = true;
+        }
       }
 
       updateGhostPreview(hit);
     },
-    [raycastGround, updateGhostPreview, clearGhost],
+    [raycastGround, raycastWalls, updateGhostPreview, clearGhost],
   );
 
   // ── Sync authored BimElements → scene ──────────────────────
@@ -566,8 +684,28 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             level: 0,
           };
           onElementCreated(el);
+        } else if (tool === "door") {
+          // Door — must snap to a wall
+          const wallSnap = raycastWalls(e);
+          if (!wallSnap) return; // Can't place door without a wall
+
+          clearGhost();
+          doorSnapRef.current = null;
+
+          const el: BimElement = {
+            id: crypto.randomUUID(),
+            type: "door",
+            name: `Door ${Date.now().toString(36).slice(-4).toUpperCase()}`,
+            start: wallSnap.position,
+            end: wallSnap.position,
+            params: { ...params.door },
+            level: 0,
+            rotation: wallSnap.rotation,
+            hostWallId: wallSnap.wallId,
+          };
+          onElementCreated(el);
         } else {
-          // Single-click elements (column, door)
+          // Single-click elements (column)
           clearGhost();
 
           const el: BimElement = {
@@ -629,6 +767,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       onElementCreated,
       highlightMesh,
       raycastGround,
+      raycastWalls,
       clearGhost,
     ],
   );
@@ -778,6 +917,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             ) : (
               <span>Click to set start point</span>
             )
+          ) : creationTool === "door" ? (
+            <span>Hover over a wall and click to place door</span>
           ) : (
             <span>Click to place {creationTool}</span>
           )}

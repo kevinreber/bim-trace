@@ -57,6 +57,10 @@ export interface BimElement {
   params: BimElementParams[BimElementType];
   /** Floor level (Y offset) */
   level: number;
+  /** Y-axis rotation in radians (used by doors to align with host wall) */
+  rotation?: number;
+  /** ID of the wall this element is hosted on (doors) */
+  hostWallId?: string;
 }
 
 /** Default parametric values for each element type */
