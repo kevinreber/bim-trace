@@ -3,11 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --background: #0f172a;
+  --background: #1e1e2e;
   --foreground: #e2e8f0;
-  --sidebar-bg: #1e293b;
-  --border: #334155;
-  --accent: #3b82f6;
+  --sidebar-bg: #252536;
+  --border: #3b3b52;
+  --accent: #5b9bd5;
+  --ribbon-bg: #2d2d40;
+  --ribbon-tab-active: #3a3a52;
+  --ribbon-panel-bg: #2d2d40;
+  --ribbon-hover: #3e3e58;
+  --ribbon-tool-active: #4a6fa5;
+  --ribbon-qa-bg: #1a1a2e;
+  --status-bg: #252536;
+  --panel-bg: #252536;
+  --panel-header: #2d2d40;
+  --input-bg: #1e1e2e;
+  --text-primary: #e8e8ee;
+  --text-secondary: #9898b0;
+  --text-muted: #6b6b80;
+  --accent-blue: #5b9bd5;
+  --accent-green: #4caf50;
 }
 
 * {
@@ -23,8 +38,535 @@ body,
   overflow: hidden;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", -apple-system, system-ui, sans-serif;
+  font-size: 13px;
 }
+
+/* ── Scrollbar (Revit-like thin scrollbar) ────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* ── Ribbon Toolbar ───────────────────────────────────────────────── */
+
+.ribbon-container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.ribbon-quick-access {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px;
+  background: var(--ribbon-qa-bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 24px;
+}
+
+.ribbon-app-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ribbon-qa-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+
+.ribbon-qa-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  transition: all 0.1s;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.ribbon-qa-btn:hover {
+  background: var(--ribbon-hover);
+  color: var(--text-primary);
+}
+
+/* ── Ribbon tabs ──────────────────────────────────────────────────── */
+
+.ribbon-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 8px;
+  background: var(--ribbon-qa-bg);
+}
+
+.ribbon-tab {
+  padding: 5px 16px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: none;
+  cursor: pointer;
+  transition: all 0.1s;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.ribbon-tab:hover {
+  color: var(--text-primary);
+  background: var(--ribbon-hover);
+}
+
+.ribbon-tab.active {
+  color: var(--text-primary);
+  background: var(--ribbon-panel-bg);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+/* ── Ribbon panel (tool area) ─────────────────────────────────────── */
+
+.ribbon-panel {
+  background: var(--ribbon-panel-bg);
+  min-height: 72px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ribbon-panel-content {
+  display: flex;
+  align-items: stretch;
+  padding: 4px 8px;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ── Ribbon tool groups ───────────────────────────────────────────── */
+
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  padding: 0 6px;
+}
+
+.ribbon-group:last-child {
+  border-right: none;
+}
+
+.ribbon-group-tools {
+  display: flex;
+  align-items: flex-start;
+  gap: 1px;
+  flex: 1;
+  padding: 2px 0;
+}
+
+.ribbon-group-label {
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 2px 4px 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Individual tool button ───────────────────────────────────────── */
+
+.ribbon-tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 2px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.1s;
+  min-width: 42px;
+}
+
+.ribbon-tool-btn:hover {
+  background: var(--ribbon-hover);
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.ribbon-tool-btn.active {
+  background: var(--ribbon-tool-active);
+  color: white;
+  border-color: var(--accent-blue);
+}
+
+.ribbon-tool-btn.snap-active {
+  background: #6b5b2d;
+  border-color: #d4a853;
+  color: #ffd866;
+}
+
+.ribbon-tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.ribbon-tool-label {
+  font-size: 9px;
+  line-height: 1.1;
+  white-space: nowrap;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ribbon-select {
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  min-width: 60px;
+}
+
+.ribbon-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* ── Properties Panel (Revit-style) ───────────────────────────────── */
+
+.properties-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border);
+}
+
+.properties-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-height: 30px;
+}
+
+.properties-type-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+}
+
+.properties-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
+  color: var(--accent-blue);
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
+}
+
+/* ── Property grid (like Revit property table) ────────────────────── */
+
+.prop-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.prop-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.prop-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--panel-header);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prop-section-header:hover {
+  background: var(--ribbon-hover);
+}
+
+.prop-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  min-height: 26px;
+}
+
+.prop-row:hover {
+  background: color-mix(in srgb, var(--ribbon-hover) 40%, transparent);
+}
+
+.prop-label {
+  flex: 0 0 45%;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prop-value {
+  flex: 1;
+  padding: 2px 6px;
+}
+
+.prop-input {
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  transition: border-color 0.1s;
+}
+
+.prop-input:hover {
+  border-color: var(--border);
+}
+
+.prop-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 8%, var(--input-bg));
+}
+
+.prop-input[type="number"] {
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.prop-input[type="number"]::-webkit-outer-spin-button,
+.prop-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.prop-unit {
+  font-size: 9px;
+  color: var(--text-muted);
+  padding-right: 6px;
+  white-space: nowrap;
+}
+
+/* ── Project Browser (left sidebar, Revit-style) ─────────────────── */
+
+.browser-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border);
+}
+
+.browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-height: 30px;
+}
+
+.browser-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-header);
+}
+
+.browser-tab {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.1s;
+}
+
+.browser-tab:hover {
+  color: var(--text-secondary);
+  background: var(--ribbon-hover);
+}
+
+.browser-tab.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+/* ── Tree nodes (Revit Project Browser style) ─────────────────────── */
+
+.tree-node-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 3px 8px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tree-node-btn:hover {
+  background: var(--ribbon-hover);
+  color: var(--text-primary);
+}
+
+.tree-node-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.tree-node-expand {
+  width: 12px;
+  font-size: 8px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.tree-node-expand.open {
+  transform: rotate(90deg);
+}
+
+/* ── Status Bar (bottom) ──────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 12px;
+  background: var(--status-bg);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  min-height: 22px;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.status-bar-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.green {
+  background: var(--accent-green);
+}
+.status-dot.blue {
+  background: var(--accent-blue);
+}
+.status-dot.amber {
+  background: #d4a853;
+}
+
+/* ── Panel resize handle ──────────────────────────────────────────── */
+
+.panel-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.panel-resize-handle:hover {
+  background: var(--accent-blue);
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
 
 @keyframes slide-in {
   from {
@@ -39,4 +581,17 @@ body,
 
 .animate-slide-in {
   animation: slide-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
 }
