@@ -40,13 +40,10 @@ function Home() {
     [],
   );
 
-  const handlePageChange = useCallback(
-    (page: number, _total: number) => {
-      setCurrentPage(page);
-      if (!hasPdf) setHasPdf(true);
-    },
-    [hasPdf],
-  );
+  const handlePageChange = useCallback((page: number, _total: number) => {
+    setCurrentPage(page);
+    setHasPdf(true);
+  }, []);
 
   const handleMarkupCreated = useCallback(
     (markup: Omit<Markup, "id" | "createdAt">) => {

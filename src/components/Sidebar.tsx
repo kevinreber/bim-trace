@@ -72,8 +72,12 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
 
       {expanded && hasChildren && (
         <div>
-          {node.children.map((child) => (
-            <TreeNode key={child.expressID} node={child} depth={depth + 1} />
+          {node.children.map((child, idx) => (
+            <TreeNode
+              key={child.expressID || `${child.type}-${idx}`}
+              node={child}
+              depth={depth + 1}
+            />
           ))}
         </div>
       )}
@@ -133,8 +137,12 @@ export default function Sidebar({
             </div>
           ) : (
             <div className="py-1">
-              {tree.map((node) => (
-                <TreeNode key={node.expressID} node={node} depth={0} />
+              {tree.map((node, idx) => (
+                <TreeNode
+                  key={node.expressID || `root-${idx}`}
+                  node={node}
+                  depth={0}
+                />
               ))}
             </div>
           ))}

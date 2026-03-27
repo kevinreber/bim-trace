@@ -63,7 +63,8 @@ export default function MarkupList({
             onChange={(e) =>
               onStatusChange(markup.id, e.target.value as Markup["status"])
             }
-            className={`text-[10px] px-1.5 py-0.5 rounded border-0 cursor-pointer ${STATUS_COLORS[markup.status]} bg-opacity-20`}
+            className={`text-[10px] px-1.5 py-0.5 rounded border-0 cursor-pointer font-medium ${STATUS_COLORS[markup.status]}`}
+            style={{ backgroundColor: "rgb(30 41 59)" }}
           >
             <option value="open">Open</option>
             <option value="pending">Pending</option>
