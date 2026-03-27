@@ -1,19 +1,43 @@
 import * as OBC from "@thatopen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-
-export interface SpatialNode {
-  expressID: number;
-  type: string;
-  name: string;
-  children: SpatialNode[];
-}
+import type { SelectedElement, SpatialNode } from "@/types";
 
 interface Viewer3DProps {
   onModelLoaded: (tree: SpatialNode[]) => void;
+  onElementSelected: (element: SelectedElement | null) => void;
 }
 
-export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
+function extractProperties(
+  mesh: THREE.Mesh,
+): Record<string, string | number | boolean> {
+  const props: Record<string, string | number | boolean> = {};
+  const ud = mesh.userData;
+  for (const [key, value] of Object.entries(ud)) {
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      props[key] = value;
+    }
+  }
+  if (mesh.geometry) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = box.getSize(new THREE.Vector3());
+    props["Width (approx)"] = `${size.x.toFixed(2)}m`;
+    props["Height (approx)"] = `${size.y.toFixed(2)}m`;
+    props["Depth (approx)"] = `${size.z.toFixed(2)}m`;
+  }
+  props.meshId = mesh.id;
+  props.meshName = mesh.name || "(unnamed)";
+  return props;
+}
+
+export default function Viewer3D({
+  onModelLoaded,
+  onElementSelected,
+}: Viewer3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const componentsRef = useRef<OBC.Components | null>(null);
   const worldRef = useRef<OBC.SimpleWorld<
@@ -21,6 +45,9 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
     OBC.SimpleCamera,
     OBC.SimpleRenderer
   > | null>(null);
+  const modelRef = useRef<unknown>(null);
+  const highlightMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  const highlightedRef = useRef<THREE.Mesh[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasModel, setHasModel] = useState(false);
@@ -54,10 +81,81 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
 
     world.scene.three.background = new THREE.Color(0x0f172a);
 
+    highlightMatRef.current = new THREE.MeshBasicMaterial({
+      color: 0x3b82f6,
+      transparent: true,
+      opacity: 0.5,
+      depthTest: false,
+    });
+
     return () => {
       components.dispose();
     };
   }, []);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const world = worldRef.current;
+      if (!world || !modelRef.current) return;
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2(x, y);
+      raycaster.setFromCamera(mouse, world.camera.three);
+
+      const meshes: THREE.Mesh[] = [];
+      world.scene.three.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) meshes.push(obj);
+      });
+
+      const intersects = raycaster.intersectObjects(meshes, false);
+
+      // Clear previous highlights
+      const scene = world.scene.three;
+      for (const h of highlightedRef.current) {
+        scene.remove(h);
+        h.geometry.dispose();
+      }
+      highlightedRef.current = [];
+
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        const mesh = hit.object as THREE.Mesh;
+
+        // Highlight the selected mesh
+        const highlightMat = highlightMatRef.current;
+        if (highlightMat) {
+          const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
+          highlight.position.copy(mesh.position);
+          highlight.rotation.copy(mesh.rotation);
+          highlight.scale.copy(mesh.scale);
+          highlight.renderOrder = 999;
+          if (mesh.parent) {
+            highlight.applyMatrix4(mesh.matrixWorld);
+          }
+          scene.add(highlight);
+          highlightedRef.current.push(highlight);
+        }
+
+        const element: SelectedElement = {
+          expressID: (mesh.userData.expressID as number) || 0,
+          type: (mesh.userData.type as string) || mesh.name || "Element",
+          name: mesh.name || `Element #${mesh.id}`,
+          properties: extractProperties(mesh),
+        };
+        onElementSelected(element);
+      } else {
+        onElementSelected(null);
+      }
+    },
+    [onElementSelected],
+  );
 
   const loadIfc = useCallback(
     async (file: File) => {
@@ -68,7 +166,6 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
       setLoading(true);
 
       try {
-        // Initialize FragmentsManager with worker
         const fragments = components.get(OBC.FragmentsManager);
         if (!fragments.initialized) {
           const workerUrl = new URL(
@@ -84,8 +181,8 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
         const buffer = await file.arrayBuffer();
         const data = new Uint8Array(buffer);
         const model = await ifcLoader.load(data, true, file.name);
+        modelRef.current = model;
 
-        // Frame the camera on the loaded model
         try {
           const boxes = await model.getBoxes();
           if (boxes && boxes.length > 0) {
@@ -108,7 +205,6 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
           world.camera.controls.setLookAt(20, 15, 20, 0, 0, 0);
         }
 
-        // Extract spatial tree
         const tree = await buildSpatialTree(model);
         onModelLoaded(tree);
         setHasModel(true);
@@ -153,6 +249,10 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onElementSelected(null);
+      }}
     >
       {isDragging && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-blue-500/20 border-2 border-dashed border-blue-400 pointer-events-none">
@@ -196,7 +296,6 @@ export default function Viewer3D({ onModelLoaded }: Viewer3DProps) {
 // biome-ignore lint/suspicious/noExplicitAny: FragmentsModel API is loosely typed
 async function buildSpatialTree(model: any): Promise<SpatialNode[]> {
   try {
-    // Try v3 API: getSpatialStructure
     if (typeof model.getSpatialStructure === "function") {
       const structure = await model.getSpatialStructure();
       if (structure) {
@@ -207,7 +306,6 @@ async function buildSpatialTree(model: any): Promise<SpatialNode[]> {
     console.warn("getSpatialStructure failed:", e);
   }
 
-  // Fallback: extract from categories
   try {
     if (typeof model.getCategories === "function") {
       const categories = await model.getCategories();
