@@ -21,6 +21,12 @@ const TYPE_ICONS: Record<Markup["type"], string> = {
   arrow: "A",
   callout: "N",
   text: "T",
+  freehand: "F",
+  rectangle: "R",
+  circle: "O",
+  polyline: "P",
+  highlight: "H",
+  measurement: "M",
 };
 
 export default function MarkupList({

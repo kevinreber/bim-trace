@@ -24,29 +24,29 @@
 ### New Element Types
 - [x] **Window** — glass pane with frame, placed on existing wall face
 - [x] **Beam** — rectangular/I-profile between two points (horizontal)
-- [ ] **Roof** — pitched or flat roof from polygon outline (multi-click perimeter)
-- [ ] **Stair** — stepped geometry between two levels (rise/run params)
-- [ ] **Railing** — posts + top rail along a path or attached to stair
+- [x] **Roof** — pitched or flat roof from polygon outline (multi-click perimeter)
+- [x] **Stair** — stepped geometry between two levels (rise/run params)
+- [x] **Railing** — posts + top rail along a path or attached to stair
 - [x] **Ceiling** — flat panel at room height (like inverted slab)
-- [ ] **Curtain Wall** — glass panel grid with mullion subdivisions
+- [x] **Curtain Wall** — glass panel grid with mullion subdivisions
 
 ### Element Presets / Furniture
 - [x] **Table** — rectangular surface on four legs
 - [x] **Chair** — seat + back + four legs
-- [ ] **Desk** — L-shaped or straight desk preset
+- [x] **Desk** — L-shaped or straight desk preset
 - [x] **Shelving** — rectangular unit with shelves
-- [ ] **Toilet/Sink** — basic bathroom fixtures
-- [ ] **Preset library UI** — categorized panel to pick from (Furniture, Fixtures, MEP)
+- [x] **Toilet/Sink** — basic bathroom fixtures
+- [x] **Preset library UI** — categorized panel to pick from (Furniture, Fixtures, MEP)
 
 ---
 
 ## PR 2 — Authoring UX Improvements
 
 ### Snap & Alignment
-- [ ] **Snap-to-grid** — configurable grid (0.25m / 0.5m / 1m) with toggle
+- [x] **Snap-to-grid** — configurable grid (0.25m / 0.5m / 1m) with toggle
 - [ ] **Snap-to-element** — endpoints snap to existing walls/columns/edges
 - [ ] **Snap-to-axis** — constrain to X or Z axis while drawing (hold Shift)
-- [ ] **Grid overlay** — visible ground grid with adjustable spacing
+- [x] **Grid overlay** — visible ground grid with adjustable spacing
 
 ### Manipulation Tools
 - [ ] **Move tool** — drag elements to reposition on the ground plane
@@ -55,15 +55,15 @@
 - [ ] **Mirror** — flip element across an axis
 
 ### Editing
-- [ ] **Undo/Redo** — command stack for all authoring actions
+- [x] **Undo/Redo** — command stack for all authoring actions
 - [ ] **Multi-select** — box select or Ctrl+click to select multiple elements
 - [ ] **Bulk delete** — delete all selected elements
 - [ ] **Dimension labels** — show length/height on hover/selection in 3D
 
 ### Multi-Level Support
-- [ ] **Level manager** — define levels (Ground, Level 1, Level 2, Roof) with heights
-- [ ] **Level selector** — dropdown to set active level (new elements placed at that Y)
-- [ ] **Level visibility toggle** — show/hide elements per level
+- [x] **Level manager** — define levels (Ground, Level 1, Level 2, Roof) with heights
+- [x] **Level selector** — dropdown to set active level (new elements placed at that Y)
+- [x] **Level visibility toggle** — show/hide elements per level
 - [ ] **Story navigation** — click level in sidebar to fly camera to that story
 
 ---
@@ -71,17 +71,17 @@
 ## PR 3 — Advanced 2D Annotation (Bluebeam Parity)
 
 ### Drawing Tools
-- [ ] **Freehand pen** — pressure-sensitive freehand drawing
-- [ ] **Rectangle** — simple rectangle markup
-- [ ] **Circle/Ellipse** — circular markup
-- [ ] **Polyline** — multi-point connected line
+- [x] **Freehand pen** — pressure-sensitive freehand drawing
+- [x] **Rectangle** — simple rectangle markup
+- [x] **Circle/Ellipse** — circular markup
+- [x] **Polyline** — multi-point connected line
 - [ ] **Polygon** — closed multi-point shape
-- [ ] **Highlight** — semi-transparent rectangular highlight
+- [x] **Highlight** — semi-transparent rectangular highlight
 - [ ] **Strikethrough** — line through text regions
 
 ### Measurement Tools
 - [ ] **Scale calibration** — set known distance on PDF to calibrate
-- [ ] **Linear measurement** — measure distance between two points
+- [x] **Linear measurement** — measure distance between two points
 - [ ] **Area measurement** — measure area of a polygon
 - [ ] **Perimeter measurement** — measure perimeter of a shape
 - [ ] **Angle measurement** — measure angle between two lines
@@ -238,14 +238,14 @@
 
 ### Layout & Navigation
 - [ ] **Responsive design** — tablet-friendly layout
-- [ ] **Keyboard shortcuts** — hotkeys for all tools (W=wall, C=column, etc.)
+- [x] **Keyboard shortcuts** — hotkeys for all tools (Shift+W=wall, Shift+C=column, etc.)
 - [ ] **Command palette** — Ctrl+K search for actions, elements, markups
 - [ ] **Context menus** — right-click menus on elements and markups
 - [ ] **Drag-to-resize panes** — adjustable split-pane widths
 - [ ] **Dark/light theme** — theme toggle with system preference detection
 
 ### Feedback & Discoverability
-- [ ] **Toast notifications** — success/error messages for actions
+- [x] **Toast notifications** — success/error messages for actions
 - [ ] **Onboarding tour** — guided walkthrough for first-time users
 - [ ] **Tooltips** — hover tooltips on all toolbar buttons
 - [ ] **Loading skeletons** — skeleton states for sidebar content
@@ -262,20 +262,20 @@
 ## PR 11 — MEP (Mechanical, Electrical, Plumbing)
 
 ### Mechanical
-- [ ] **Duct** — rectangular or circular duct between two points
+- [x] **Duct** — rectangular or circular duct between two points
 - [ ] **Duct fitting** — elbow, tee, reducer connectors
 - [ ] **Air terminal** — diffuser/grille placed on ceiling
 
 ### Plumbing
-- [ ] **Pipe** — cylindrical pipe between two points with diameter param
+- [x] **Pipe** — cylindrical pipe between two points with diameter param
 - [ ] **Pipe fitting** — elbow, tee, valve connectors
-- [ ] **Fixtures** — sink, toilet, urinal presets
+- [x] **Fixtures** — sink, toilet, urinal presets
 
 ### Electrical
 - [ ] **Cable tray** — rectangular tray between two points
 - [ ] **Conduit** — small-diameter pipe for wiring
 - [ ] **Electrical panel** — wall-mounted box
-- [ ] **Light fixture** — ceiling-mounted preset
+- [x] **Light fixture** — ceiling-mounted preset
 - [ ] **Switch/Outlet** — wall-mounted presets
 
 ### MEP Visualization
