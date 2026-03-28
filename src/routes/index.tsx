@@ -41,8 +41,11 @@ interface Toast {
 
 function Home() {
   const [tree, setTree] = useState<SpatialNode[]>([]);
-  const [selectedElement, setSelectedElement] =
-    useState<SelectedElement | null>(null);
+  const [selectedElements, setSelectedElements] = useState<SelectedElement[]>(
+    [],
+  );
+  // Convenience: first selected element (for backward compat with single-select APIs)
+  const selectedElement = selectedElements[0] ?? null;
   const [markups, setMarkups] = useState<Markup[]>([]);
   const [activeTool, setActiveTool] = useState<AnnotationTool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("split");
@@ -165,7 +168,7 @@ function Home() {
     setMarkups([]);
     setLevels(DEFAULT_LEVELS);
     setActiveLevel("ground");
-    setSelectedElement(null);
+    setSelectedElements([]);
     undoStackRef.current = [];
     redoStackRef.current = [];
     clearProject().catch(() => {});
@@ -177,8 +180,21 @@ function Home() {
   }, []);
 
   const handleElementSelected = useCallback(
-    (element: SelectedElement | null) => {
-      setSelectedElement(element);
+    (element: SelectedElement | null, ctrlKey = false) => {
+      if (!element) {
+        setSelectedElements([]);
+        return;
+      }
+      if (ctrlKey) {
+        // Toggle: if already selected, remove; otherwise add
+        setSelectedElements((prev) => {
+          const exists = prev.some((e) => e.globalId === element.globalId);
+          if (exists) return prev.filter((e) => e.globalId !== element.globalId);
+          return [...prev, element];
+        });
+      } else {
+        setSelectedElements([element]);
+      }
     },
     [],
   );
@@ -222,19 +238,31 @@ function Home() {
     (elementId: string) => {
       const el = bimElements.find((e) => e.id === elementId);
       if (!el) return;
-      // Set as selected element so Properties panel shows it
-      setSelectedElement({
+      const selEl: SelectedElement = {
         expressID: 0,
         globalId: el.id,
         type: el.type,
         name: el.name,
         properties: el.params as Record<string, string | number | boolean>,
-      });
+      };
+      setSelectedElements([selEl]);
       // Fly to it in the 3D view
       viewer3DRef.current?.flyToElement(el.id);
       setViewMode((prev) => (prev === "2d" ? "split" : prev));
     },
     [bimElements],
+  );
+
+  // Story navigation: fly camera to selected level height
+  const handleLevelNavigate = useCallback(
+    (levelId: string) => {
+      const level = levels.find((l) => l.id === levelId);
+      if (!level) return;
+      setActiveLevel(levelId);
+      viewer3DRef.current?.flyToLevel(level.height);
+      setViewMode((prev) => (prev === "2d" ? "split" : prev));
+    },
+    [levels],
   );
 
   const handleMarkupLink = useCallback(
@@ -309,10 +337,26 @@ function Home() {
         }
         return prev.filter((e) => e.id !== id);
       });
-      setSelectedElement((prev) => (prev?.globalId === id ? null : prev));
+      setSelectedElements((prev) => prev.filter((e) => e.globalId !== id));
     },
     [showToast],
   );
+
+  // Bulk delete all selected elements
+  const handleBulkDelete = useCallback(() => {
+    const ids = new Set(selectedElements.map((e) => e.globalId));
+    if (ids.size === 0) return;
+    setBimElements((prev) => {
+      const toDelete = prev.filter((e) => ids.has(e.id));
+      if (toDelete.length > 0) {
+        undoStackRef.current.push({ type: "bulkDelete", elements: toDelete });
+        redoStackRef.current = [];
+        showToast(`Deleted ${toDelete.length} element(s)`, "info");
+      }
+      return prev.filter((e) => !ids.has(e.id));
+    });
+    setSelectedElements([]);
+  }, [selectedElements, showToast]);
 
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
@@ -327,6 +371,9 @@ function Home() {
         break;
       case "delete":
         setBimElements((prev) => [...prev, action.element]);
+        break;
+      case "bulkDelete":
+        setBimElements((prev) => [...prev, ...action.elements]);
         break;
       case "update":
         setBimElements((prev) =>
@@ -366,6 +413,11 @@ function Home() {
           prev.filter((el) => el.id !== action.element.id),
         );
         break;
+      case "bulkDelete": {
+        const ids = new Set(action.elements.map((e) => e.id));
+        setBimElements((prev) => prev.filter((el) => !ids.has(el.id)));
+        break;
+      }
       case "update":
         setBimElements((prev) =>
           prev.map((el) =>
@@ -426,9 +478,12 @@ function Home() {
         return;
       }
 
-      // Delete selected element
+      // Delete selected element(s) — bulk delete if multiple selected
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedElement) {
+        if (selectedElements.length > 1) {
+          e.preventDefault();
+          handleBulkDelete();
+        } else if (selectedElement) {
           const bimEl = bimElements.find(
             (el) => el.id === selectedElement.globalId,
           );
@@ -440,28 +495,29 @@ function Home() {
         return;
       }
 
-      // Arrow keys to move selected element
-      if (selectedElement && !e.shiftKey) {
-        const bimEl = bimElements.find(
-          (el) => el.id === selectedElement.globalId,
-        );
+      // Arrow keys to move selected element(s)
+      if (selectedElements.length > 0 && !e.shiftKey) {
         const step = snapEnabled ? gridSize : 0.5;
         if (
-          bimEl &&
-          (e.key === "ArrowLeft" ||
-            e.key === "ArrowRight" ||
-            e.key === "ArrowUp" ||
-            e.key === "ArrowDown")
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown"
         ) {
           e.preventDefault();
           const dx =
             e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
           const dz =
             e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-          handleBimElementUpdate(bimEl.id, {
-            start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
-            end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
-          });
+          for (const sel of selectedElements) {
+            const bimEl = bimElements.find((el) => el.id === sel.globalId);
+            if (bimEl) {
+              handleBimElementUpdate(bimEl.id, {
+                start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
+                end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
+              });
+            }
+          }
           return;
         }
       }
@@ -532,8 +588,10 @@ function Home() {
     handleUndo,
     handleRedo,
     handleBimElementDelete,
+    handleBulkDelete,
     handleBimElementUpdate,
     selectedElement,
+    selectedElements,
     bimElements,
     snapEnabled,
     gridSize,
@@ -566,8 +624,10 @@ function Home() {
         onExportProject={handleExportProject}
         onImportProject={handleImportProject}
         selectedElement={selectedElement}
+        selectedElements={selectedElements}
         bimElements={bimElements}
         onBimElementUpdate={handleBimElementUpdate}
+        onBulkDelete={handleBulkDelete}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
@@ -587,6 +647,7 @@ function Home() {
             activeLevel={activeLevel}
             onActiveLevelChange={setActiveLevel}
             onLevelsChange={setLevels}
+            onLevelNavigate={handleLevelNavigate}
           />
         </div>
 
@@ -611,6 +672,7 @@ function Home() {
                 defaultParams={DEFAULT_PARAMS}
                 snapEnabled={snapEnabled}
                 gridSize={gridSize}
+                selectedElements={selectedElements}
               />
               {/* Viewport label (like Revit's viewport title) */}
               <div
@@ -709,8 +771,14 @@ function Home() {
             </span>
           )}
           {hasPdf && <span>Page {currentPage}</span>}
+          {selectedElements.length > 1 && (
+            <span className="status-indicator">
+              <span className="status-dot blue" />
+              {selectedElements.length} selected
+            </span>
+          )}
           <span style={{ color: "var(--text-muted)" }}>
-            Shift+Key = Create | G = Snap | 1/2/3 = View
+            Shift+Key = Create | G = Snap | Ctrl+Click = Multi-select
           </span>
         </div>
       </div>

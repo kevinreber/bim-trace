@@ -42,8 +42,10 @@ interface RibbonToolbarProps {
   onImportProject: () => void;
   // Manipulation
   selectedElement: SelectedElement | null;
+  selectedElements: SelectedElement[];
   bimElements: BimElement[];
   onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
+  onBulkDelete: () => void;
 }
 
 type RibbonTab = "architecture" | "annotate" | "view" | "modify";
@@ -604,8 +606,10 @@ export default function RibbonToolbar({
   onExportProject,
   onImportProject,
   selectedElement,
+  selectedElements,
   bimElements,
   onBimElementUpdate,
+  onBulkDelete,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
 
@@ -1012,6 +1016,34 @@ export default function RibbonToolbar({
               </div>
               <div className="ribbon-group-label">Transform</div>
             </div>
+
+            {selectedElements.length > 1 && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={onBulkDelete}
+                    className="ribbon-tool-btn"
+                    title={`Delete ${selectedElements.length} selected elements (Delete)`}
+                    style={{ color: "#ef4444" }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M5 7 L19 7 M9 7 V4 H15 V7 M10 11 V17 M14 11 V17 M6 7 L7 20 H17 L18 7" />
+                    </svg>
+                    <span className="ribbon-tool-label">
+                      Delete ({selectedElements.length})
+                    </span>
+                  </button>
+                </div>
+                <div className="ribbon-group-label">Bulk</div>
+              </div>
+            )}
 
             <div className="ribbon-group">
               <div className="ribbon-group-tools">

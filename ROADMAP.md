@@ -56,15 +56,15 @@
 
 ### Editing
 - [x] **Undo/Redo** — command stack for all authoring actions
-- [ ] **Multi-select** — box select or Ctrl+click to select multiple elements
-- [ ] **Bulk delete** — delete all selected elements
-- [ ] **Dimension labels** — show length/height on hover/selection in 3D
+- [x] **Multi-select** — box select or Ctrl+click to select multiple elements
+- [x] **Bulk delete** — delete all selected elements
+- [x] **Dimension labels** — show length/height on hover/selection in 3D
 
 ### Multi-Level Support
 - [x] **Level manager** — define levels (Ground, Level 1, Level 2, Roof) with heights
 - [x] **Level selector** — dropdown to set active level (new elements placed at that Y)
 - [x] **Level visibility toggle** — show/hide elements per level
-- [ ] **Story navigation** — click level in sidebar to fly camera to that story
+- [x] **Story navigation** — click level in sidebar to fly camera to that story
 
 ---
 

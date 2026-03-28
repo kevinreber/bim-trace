@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Multi-select** — Ctrl+click (Cmd+click on Mac) to select multiple elements in the 3D viewport; selection state shown in status bar
+- **Bulk delete** — delete all selected elements at once with Delete/Backspace key or the "Delete (N)" button in the Modify ribbon tab; fully undoable
+- **Dimension labels** — selected elements display floating dimension labels (W x H x D) above them in the 3D viewport using canvas-rendered sprites
+- **Story navigation** — click the arrow icon next to any level in the Levels tab of the Project Browser to fly the 3D camera to that story's height
+- **Arrow key bulk move** — arrow keys now move all selected elements simultaneously (previously only moved a single element)
 - **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
 - **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar
 - **Element manipulation tools** — Move (+/-X, +/-Z), Rotate (+/-45°), Copy, and Mirror tools in the Modify ribbon tab for transforming placed elements

@@ -49,13 +49,17 @@ import {
 
 interface Viewer3DProps {
   onModelLoaded: (tree: SpatialNode[]) => void;
-  onElementSelected: (element: SelectedElement | null) => void;
+  onElementSelected: (
+    element: SelectedElement | null,
+    ctrlKey?: boolean,
+  ) => void;
   creationTool: CreationTool;
   onElementCreated: (element: BimElement) => void;
   bimElements: BimElement[];
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
+  selectedElements?: SelectedElement[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -105,6 +109,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
+    selectedElements = [],
   },
   ref,
 ) {
@@ -139,6 +144,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+
+  /** Dimension label sprites for selected elements */
+  const dimensionSpritesRef = useRef<THREE.Sprite[]>([]);
 
   // Snap refs
   const snapEnabledRef = useRef(snapEnabled);
@@ -209,26 +217,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   // ── Highlight helpers ──────────────────────────────────────
 
-  const highlightMesh = useCallback((mesh: THREE.Mesh | null) => {
+  const clearHighlights = useCallback(() => {
     const world = worldRef.current;
     if (!world) return;
     const scene = world.scene.three;
-
     for (const h of highlightedRef.current) {
       scene.remove(h);
       h.geometry.dispose();
     }
     highlightedRef.current = [];
+  }, []);
 
-    if (!mesh) return;
+  const addHighlightForMesh = useCallback(
+    (mesh: THREE.Mesh) => {
+      const world = worldRef.current;
+      if (!world) return;
+      const scene = world.scene.three;
+      const highlightMat = highlightMatRef.current;
+      if (!highlightMat) return;
 
-    const highlightMat = highlightMatRef.current;
-    if (highlightMat) {
       const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
-      // Copy transform directly — for scene-root meshes this is the
-      // full transform; for nested IFC children we decompose matrixWorld.
       if (mesh.parent && mesh.parent !== scene) {
-        // Nested mesh (IFC model child) — decompose world matrix
         mesh.updateWorldMatrix(true, false);
         const pos = new THREE.Vector3();
         const quat = new THREE.Quaternion();
@@ -238,7 +247,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         highlight.quaternion.copy(quat);
         highlight.scale.copy(scl);
       } else {
-        // Root-level mesh (authored element) — direct copy
         highlight.position.copy(mesh.position);
         highlight.rotation.copy(mesh.rotation);
         highlight.scale.copy(mesh.scale);
@@ -246,8 +254,17 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       highlight.renderOrder = 999;
       scene.add(highlight);
       highlightedRef.current.push(highlight);
-    }
-  }, []);
+    },
+    [],
+  );
+
+  const highlightMesh = useCallback(
+    (mesh: THREE.Mesh | null) => {
+      clearHighlights();
+      if (mesh) addHighlightForMesh(mesh);
+    },
+    [clearHighlights, addHighlightForMesh],
+  );
 
   const flyToMesh = useCallback((mesh: THREE.Mesh) => {
     const world = worldRef.current;
@@ -289,6 +306,19 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         };
         onElementSelected(element);
       },
+      flyToLevel(height: number) {
+        const world = worldRef.current;
+        if (!world) return;
+        world.camera.controls.setLookAt(
+          12,
+          height + 8,
+          12,
+          0,
+          height,
+          0,
+          true,
+        );
+      },
     }),
     [highlightMesh, flyToMesh, onElementSelected],
   );
@@ -304,6 +334,70 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }
     });
   }, []);
+
+  // ── Multi-select highlighting + dimension labels ───────────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const scene = world.scene.three;
+
+    // Clear existing highlights and dimension sprites
+    clearHighlights();
+    for (const sprite of dimensionSpritesRef.current) {
+      scene.remove(sprite);
+      (sprite.material as THREE.SpriteMaterial).map?.dispose();
+      (sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    dimensionSpritesRef.current = [];
+
+    // Highlight all selected elements and add dimension labels
+    for (const sel of selectedElements) {
+      const mesh =
+        authoredMeshesRef.current.get(sel.globalId) ??
+        meshMapRef.current.get(sel.globalId);
+      if (!mesh) continue;
+      addHighlightForMesh(mesh);
+
+      // Create dimension label sprite
+      const box = new THREE.Box3().setFromObject(mesh);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+
+      const w = size.x.toFixed(2);
+      const h = size.y.toFixed(2);
+      const d = size.z.toFixed(2);
+      const label = `${w} x ${h} x ${d} m`;
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        canvas.width = 256;
+        canvas.height = 64;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.roundRect(0, 0, 256, 64, 8);
+        ctx.fill();
+        ctx.font = "bold 22px Segoe UI, sans-serif";
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, 128, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthTest: false,
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.position.set(center.x, box.max.y + 0.5, center.z);
+        sprite.scale.set(2.5, 0.625, 1);
+        sprite.renderOrder = 1001;
+        scene.add(sprite);
+        dimensionSpritesRef.current.push(sprite);
+      }
+    }
+  }, [selectedElements, bimElements, clearHighlights, addHighlightForMesh]);
 
   // ── Ground plane raycasting ────────────────────────────────
 
@@ -889,8 +983,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       const intersects = raycaster.intersectObjects(meshes, false);
 
-      highlightMesh(null);
-
       if (intersects.length > 0) {
         // Prefer doors/windows over their host wall when both are hit
         // at a similar distance (door is inside the wall geometry).
@@ -898,7 +990,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         const bestDist = intersects[0].distance;
         for (let i = 1; i < intersects.length; i++) {
           const hit = intersects[i];
-          // Only consider hits within a small tolerance of the closest hit
           if (hit.distance - bestDist > 0.3) break;
           const type = (hit.object as THREE.Mesh).userData.type as
             | string
@@ -909,7 +1000,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           }
         }
         const mesh = intersects[bestIdx].object as THREE.Mesh;
-        highlightMesh(mesh);
 
         const globalId =
           (mesh.userData.bimElementId as string) || buildGlobalId(mesh);
@@ -920,7 +1010,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           name: mesh.name || `Element #${mesh.id}`,
           properties: extractProperties(mesh),
         };
-        onElementSelected(element);
+        onElementSelected(element, e.ctrlKey || e.metaKey);
       } else {
         onElementSelected(null);
       }

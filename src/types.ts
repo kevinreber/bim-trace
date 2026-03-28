@@ -54,6 +54,7 @@ export type AnnotationTool =
 /** Handle exposed by Viewer3D via forwardRef for programmatic camera control */
 export interface Viewer3DHandle {
   flyToElement: (globalId: string) => void;
+  flyToLevel: (height: number) => void;
 }
 
 // ── BIM Authoring ──────────────────────────────────────────────
@@ -167,6 +168,7 @@ export const DEFAULT_PARAMS: BimElementParams = {
 export type UndoAction =
   | { type: "add"; element: BimElement }
   | { type: "delete"; element: BimElement }
+  | { type: "bulkDelete"; elements: BimElement[] }
   | {
       type: "update";
       id: string;
