@@ -1,5 +1,12 @@
 import { useState } from "react";
-import type { AnnotationTool, CreationTool, GridSize, Level } from "@/types";
+import type {
+  AnnotationTool,
+  BimElement,
+  CreationTool,
+  GridSize,
+  Level,
+  SelectedElement,
+} from "@/types";
 
 /* ------------------------------------------------------------------ */
 /*  Revit-style Ribbon Toolbar                                         */
@@ -29,6 +36,14 @@ interface RibbonToolbarProps {
   levels: Level[];
   activeLevel: string;
   onActiveLevelChange: (id: string) => void;
+  // Project persistence
+  onNewProject: () => void;
+  onExportProject: () => void;
+  onImportProject: () => void;
+  // Manipulation
+  selectedElement: SelectedElement | null;
+  bimElements: BimElement[];
+  onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
 }
 
 type RibbonTab = "architecture" | "annotate" | "view" | "modify";
@@ -585,8 +600,82 @@ export default function RibbonToolbar({
   levels,
   activeLevel,
   onActiveLevelChange,
+  onNewProject,
+  onExportProject,
+  onImportProject,
+  selectedElement,
+  bimElements,
+  onBimElementUpdate,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
+
+  // ── Manipulation helpers ──────────────────────────────────────
+  const selectedBimElement = selectedElement
+    ? bimElements.find((el) => el.id === selectedElement.globalId)
+    : null;
+
+  const handleMove = (axis: "x" | "z", delta: number) => {
+    if (!selectedBimElement) return;
+    onBimElementUpdate(selectedBimElement.id, {
+      start: {
+        x: selectedBimElement.start.x + (axis === "x" ? delta : 0),
+        z: selectedBimElement.start.z + (axis === "z" ? delta : 0),
+      },
+      end: {
+        x: selectedBimElement.end.x + (axis === "x" ? delta : 0),
+        z: selectedBimElement.end.z + (axis === "z" ? delta : 0),
+      },
+    });
+  };
+
+  const handleRotate = (angleDeg: number) => {
+    if (!selectedBimElement) return;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const currentRot = selectedBimElement.rotation ?? 0;
+    onBimElementUpdate(selectedBimElement.id, {
+      rotation: currentRot + angleRad,
+    });
+  };
+
+  const handleCopy = () => {
+    if (!selectedBimElement) return;
+    const offset = 1; // 1m offset
+    const newEl: BimElement = {
+      ...selectedBimElement,
+      id: crypto.randomUUID(),
+      name: `${selectedBimElement.name} (copy)`,
+      start: {
+        x: selectedBimElement.start.x + offset,
+        z: selectedBimElement.start.z + offset,
+      },
+      end: {
+        x: selectedBimElement.end.x + offset,
+        z: selectedBimElement.end.z + offset,
+      },
+      params: { ...selectedBimElement.params },
+    };
+    // We use onBimElementUpdate with a trick: add via the parent's element creation
+    // Instead, we dispatch a custom event that the parent listens for
+    window.dispatchEvent(
+      new CustomEvent("bim-copy-element", { detail: newEl }),
+    );
+  };
+
+  const handleMirror = () => {
+    if (!selectedBimElement) return;
+    // Mirror across the X axis (flip Z coordinates)
+    const cx = (selectedBimElement.start.x + selectedBimElement.end.x) / 2;
+    onBimElementUpdate(selectedBimElement.id, {
+      start: {
+        x: 2 * cx - selectedBimElement.start.x,
+        z: selectedBimElement.start.z,
+      },
+      end: {
+        x: 2 * cx - selectedBimElement.end.x,
+        z: selectedBimElement.end.z,
+      },
+    });
+  };
 
   const handleCreationTool = (id: string) => {
     onCreationToolChange(id as CreationTool);
@@ -605,6 +694,61 @@ export default function RibbonToolbar({
       {/* ── Quick Access Bar (above tabs) ─────────────────────── */}
       <div className="ribbon-quick-access">
         <span className="ribbon-app-title">BIM Trace</span>
+        <div className="ribbon-qa-divider" />
+        <button
+          type="button"
+          onClick={onNewProject}
+          className="ribbon-qa-btn"
+          title="New Project"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <rect x="3" y="3" width="14" height="14" rx="1" />
+            <line x1="10" y1="7" x2="10" y2="13" />
+            <line x1="7" y1="10" x2="13" y2="10" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onImportProject}
+          className="ribbon-qa-btn"
+          title="Open Project (JSON)"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path d="M3 10 L3 15 Q3 17 5 17 L15 17 Q17 17 17 15 L17 10" />
+            <path d="M10 3 L10 12" />
+            <path d="M7 9 L10 12 L13 9" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onExportProject}
+          className="ribbon-qa-btn"
+          title="Save Project (JSON)"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path d="M3 10 L3 15 Q3 17 5 17 L15 17 Q17 17 17 15 L17 10" />
+            <path d="M10 12 L10 3" />
+            <path d="M7 6 L10 3 L13 6" />
+          </svg>
+        </button>
         <div className="ribbon-qa-divider" />
         <button
           type="button"
@@ -694,6 +838,179 @@ export default function RibbonToolbar({
                 </button>
               </div>
               <div className="ribbon-group-label">Selection</div>
+            </div>
+
+            {/* Move tools */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={() => handleMove("x", -0.5)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Move Left (-X)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="9,8 5,12 9,16" />
+                  </svg>
+                  <span className="ribbon-tool-label">-X</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMove("x", 0.5)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Move Right (+X)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="15,8 19,12 15,16" />
+                  </svg>
+                  <span className="ribbon-tool-label">+X</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMove("z", -0.5)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Move Forward (-Z)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="8,9 12,5 16,9" />
+                  </svg>
+                  <span className="ribbon-tool-label">-Z</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMove("z", 0.5)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Move Back (+Z)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <polyline points="8,15 12,19 16,15" />
+                  </svg>
+                  <span className="ribbon-tool-label">+Z</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Move</div>
+            </div>
+
+            {/* Rotate & Transform */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={() => handleRotate(-45)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Rotate -45°"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path d="M4 12 A8 8 0 0 1 20 12" />
+                    <polyline points="4,8 4,12 8,12" />
+                  </svg>
+                  <span className="ribbon-tool-label">-45°</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRotate(45)}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Rotate +45°"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path d="M20 12 A8 8 0 0 0 4 12" />
+                    <polyline points="20,8 20,12 16,12" />
+                  </svg>
+                  <span className="ribbon-tool-label">+45°</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Copy Element"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="8" y="8" width="12" height="12" rx="1" />
+                    <path d="M4 16 L4 5 Q4 4 5 4 L16 4" />
+                  </svg>
+                  <span className="ribbon-tool-label">Copy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMirror}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Mirror Element"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line
+                      x1="12"
+                      y1="3"
+                      x2="12"
+                      y2="21"
+                      strokeDasharray="3 2"
+                    />
+                    <path d="M8 8 L4 12 L8 16" />
+                    <path d="M16 8 L20 12 L16 16" />
+                  </svg>
+                  <span className="ribbon-tool-label">Mirror</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Transform</div>
             </div>
 
             <div className="ribbon-group">

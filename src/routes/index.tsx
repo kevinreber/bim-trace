@@ -5,6 +5,14 @@ import PdfViewer from "@/components/PdfViewer";
 import RibbonToolbar from "@/components/RibbonToolbar";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
 import Viewer3D from "@/components/Viewer3D";
+import {
+  clearProject,
+  exportProjectJSON,
+  importProjectJSON,
+  loadProject,
+  type ProjectData,
+  saveProject,
+} from "@/persistence";
 import type {
   AnnotationTool,
   BimElement,
@@ -62,6 +70,9 @@ function Home() {
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Persistence: loaded flag
+  const [projectLoaded, setProjectLoaded] = useState(false);
+
   const showToast = useCallback(
     (message: string, type: Toast["type"] = "info") => {
       const id = crypto.randomUUID();
@@ -75,6 +86,91 @@ function Home() {
 
   const activeLevelHeight =
     levels.find((l) => l.id === activeLevel)?.height ?? 0;
+
+  // ── Persistence: load on mount ──────────────────────────────
+  useEffect(() => {
+    loadProject()
+      .then((data) => {
+        if (data) {
+          setBimElements(data.bimElements);
+          setMarkups(data.markups);
+          setLevels(data.levels);
+          setActiveLevel(data.activeLevel);
+          showToast("Project restored from auto-save", "info");
+        }
+      })
+      .catch(() => {
+        // Silently fail — fresh start
+      })
+      .finally(() => setProjectLoaded(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Persistence: auto-save on changes (debounced) ───────────
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!projectLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveProject({
+        bimElements,
+        markups,
+        levels,
+        activeLevel,
+        savedAt: Date.now(),
+      }).catch(() => {});
+    }, 1000);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [bimElements, markups, levels, activeLevel, projectLoaded]);
+
+  // ── Persistence: export/import/new project ──────────────────
+  const handleExportProject = useCallback(() => {
+    const data: ProjectData = {
+      bimElements,
+      markups,
+      levels,
+      activeLevel,
+      savedAt: Date.now(),
+    };
+    exportProjectJSON(data);
+    showToast("Project exported", "success");
+  }, [bimElements, markups, levels, activeLevel, showToast]);
+
+  const handleImportProject = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const data = await importProjectJSON(file);
+        setBimElements(data.bimElements);
+        setMarkups(data.markups);
+        setLevels(data.levels);
+        setActiveLevel(data.activeLevel);
+        undoStackRef.current = [];
+        redoStackRef.current = [];
+        showToast("Project imported", "success");
+      } catch {
+        showToast("Failed to import project", "error");
+      }
+    };
+    input.click();
+  }, [showToast]);
+
+  const handleNewProject = useCallback(() => {
+    setBimElements([]);
+    setMarkups([]);
+    setLevels(DEFAULT_LEVELS);
+    setActiveLevel("ground");
+    setSelectedElement(null);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    clearProject().catch(() => {});
+    showToast("New project created", "info");
+  }, [showToast]);
 
   const handleModelLoaded = useCallback((spatialTree: SpatialNode[]) => {
     setTree(spatialTree);
@@ -293,6 +389,16 @@ function Home() {
     showToast("Redo", "info");
   }, [showToast]);
 
+  // Copy element event listener (from RibbonToolbar copy button)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const el = (e as CustomEvent<BimElement>).detail;
+      if (el) handleElementCreated(el);
+    };
+    window.addEventListener("bim-copy-element", handler);
+    return () => window.removeEventListener("bim-copy-element", handler);
+  }, [handleElementCreated]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -332,6 +438,32 @@ function Home() {
           }
         }
         return;
+      }
+
+      // Arrow keys to move selected element
+      if (selectedElement && !e.shiftKey) {
+        const bimEl = bimElements.find(
+          (el) => el.id === selectedElement.globalId,
+        );
+        const step = snapEnabled ? gridSize : 0.5;
+        if (
+          bimEl &&
+          (e.key === "ArrowLeft" ||
+            e.key === "ArrowRight" ||
+            e.key === "ArrowUp" ||
+            e.key === "ArrowDown")
+        ) {
+          e.preventDefault();
+          const dx =
+            e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+          const dz =
+            e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+          handleBimElementUpdate(bimEl.id, {
+            start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
+            end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
+          });
+          return;
+        }
       }
 
       // View mode shortcuts
@@ -400,8 +532,11 @@ function Home() {
     handleUndo,
     handleRedo,
     handleBimElementDelete,
+    handleBimElementUpdate,
     selectedElement,
     bimElements,
+    snapEnabled,
+    gridSize,
   ]);
 
   const activeLevelName =
@@ -427,6 +562,12 @@ function Home() {
         levels={levels}
         activeLevel={activeLevel}
         onActiveLevelChange={setActiveLevel}
+        onNewProject={handleNewProject}
+        onExportProject={handleExportProject}
+        onImportProject={handleImportProject}
+        selectedElement={selectedElement}
+        bimElements={bimElements}
+        onBimElementUpdate={handleBimElementUpdate}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}

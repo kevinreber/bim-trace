@@ -9,8 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
+- **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar
+- **Element manipulation tools** — Move (+/-X, +/-Z), Rotate (+/-45°), Copy, and Mirror tools in the Modify ribbon tab for transforming placed elements
+- **Arrow key movement** — move selected elements with arrow keys (step size follows snap grid setting)
 - **Wall boolean cutouts** — doors and windows now cut proper openings in their host wall geometry using ExtrudeGeometry with Shape holes, making them visible from the front of the wall
 - **Project Browser element selection** — clicking an authored element in the Project Browser tree now selects it, shows its properties in the Properties panel, and flies the 3D camera to it
+
+### Changed
+- **Viewer3D refactored** — extracted all geometry builders (20 build functions, materials, wall openings) into `src/components/geometryBuilders.ts`, reducing Viewer3D from ~2,325 to ~1,210 lines
 
 ### Fixed
 - **Selection highlight offset** — highlight mesh now copies position/rotation/scale directly for scene-root meshes and decomposes matrixWorld for nested IFC children, fixing the offset rendering
