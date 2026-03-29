@@ -182,6 +182,80 @@ export type UndoAction =
       after: Partial<Markup>;
     };
 
+// ── Multi-Window Views ──────────────────────────────────────────
+
+export type ViewPaneType =
+  | "3d"
+  | "plan"
+  | "front-elevation"
+  | "back-elevation"
+  | "left-elevation"
+  | "right-elevation"
+  | "2d-sheet";
+
+export interface ViewPane {
+  id: string;
+  type: ViewPaneType;
+  title: string;
+}
+
+export type ViewLayout = "single" | "2-up" | "3-up" | "4-up";
+
+export const VIEW_PANE_LABELS: Record<ViewPaneType, string> = {
+  "3d": "3D View",
+  plan: "Plan View",
+  "front-elevation": "Front Elevation",
+  "back-elevation": "Back Elevation",
+  "left-elevation": "Left Elevation",
+  "right-elevation": "Right Elevation",
+  "2d-sheet": "2D Sheet",
+};
+
+export const DEFAULT_PANES: ViewPane[] = [
+  { id: "main-3d", type: "3d", title: "3D View" },
+];
+
+// ── Camera Presets for Orthographic Views ────────────────────
+
+export interface CameraPreset {
+  position: [number, number, number];
+  target: [number, number, number];
+  orthographic: boolean;
+}
+
+export const CAMERA_PRESETS: Record<string, CameraPreset> = {
+  "3d": {
+    position: [12, 6, 8],
+    target: [0, 0, -10],
+    orthographic: false,
+  },
+  plan: {
+    position: [0, 50, 0],
+    target: [0, 0, 0],
+    orthographic: true,
+  },
+  "front-elevation": {
+    position: [0, 5, 50],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "back-elevation": {
+    position: [0, 5, -50],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "left-elevation": {
+    position: [-50, 5, 0],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "right-elevation": {
+    position: [50, 5, 0],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+};
+
 // ── Snap & Grid ──────────────────────────────────────────────
 
 export type GridSize = 0.25 | 0.5 | 1;

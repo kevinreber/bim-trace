@@ -10,6 +10,7 @@ import {
 import * as THREE from "three";
 import type {
   BimElement,
+  CameraPreset,
   CreationTool,
   DEFAULT_PARAMS,
   GridSize,
@@ -56,6 +57,7 @@ interface Viewer3DProps {
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
+  cameraPreset?: CameraPreset;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
+    cameraPreset,
   },
   ref,
 ) {
@@ -173,7 +176,13 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
     components.init();
 
-    world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
+    if (cameraPreset) {
+      const [px, py, pz] = cameraPreset.position;
+      const [tx, ty, tz] = cameraPreset.target;
+      world.camera.controls.setLookAt(px, py, pz, tx, ty, tz);
+    } else {
+      world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
+    }
     world.scene.setup();
 
     const grids = components.get(OBC.Grids);
