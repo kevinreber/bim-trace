@@ -508,6 +508,54 @@ body,
   transform: rotate(90deg);
 }
 
+/* ── Viewport Tabs ───────────────────────────────────────────────── */
+
+.viewport-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+  flex-shrink: 0;
+  min-height: 30px;
+}
+
+.viewport-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.viewport-tab:hover {
+  color: var(--foreground);
+}
+
+.viewport-tab.active {
+  color: var(--foreground);
+  border-bottom-color: var(--accent);
+}
+
+.viewport-tab-badge {
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+  align-self: center;
+}
+
 /* ── Status Bar (bottom) ──────────────────────────────────────────── */
 
 .status-bar {

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Project Browser element selection** — clicking an authored element in the Project Browser tree now selects it, shows its properties in the Properties panel, and flies the 3D camera to it
 
 ### Changed
+- **Redesigned PDF/2D Sheet layout** — replaced side-by-side split view default with tabbed viewport; 3D View is now the default with "3D View" / "2D Sheet" tabs for switching; split view remains available via the View ribbon tab
 - **Viewer3D refactored** — extracted all geometry builders (20 build functions, materials, wall openings) into `src/components/geometryBuilders.ts`, reducing Viewer3D from ~2,325 to ~1,210 lines
 
 ### Fixed
