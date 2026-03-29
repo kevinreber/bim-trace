@@ -26,11 +26,7 @@ import type {
   ViewPane,
   ViewPaneType,
 } from "@/types";
-import {
-  DEFAULT_LEVELS,
-  DEFAULT_PANES,
-  VIEW_PANE_LABELS,
-} from "@/types";
+import { DEFAULT_LEVELS, DEFAULT_PANES, VIEW_PANE_LABELS } from "@/types";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -273,13 +269,12 @@ function Home() {
         type,
         title: VIEW_PANE_LABELS[type],
       };
-      setViewPanes((prev) => [...prev, newPane]);
-      // Auto-upgrade layout when adding panes
       setViewPanes((prev) => {
-        if (prev.length >= 4) setViewLayout("4-up");
-        else if (prev.length >= 3) setViewLayout("3-up");
-        else if (prev.length >= 2) setViewLayout("2-up");
-        return prev;
+        const next = [...prev, newPane];
+        if (next.length >= 4) setViewLayout("4-up");
+        else if (next.length >= 3) setViewLayout("3-up");
+        else if (next.length >= 2) setViewLayout("2-up");
+        return next;
       });
       showToast(`Opened ${VIEW_PANE_LABELS[type]}`, "info");
     },
@@ -699,36 +694,37 @@ function Home() {
           <div
             className={`flex-1 overflow-hidden viewport-grid viewport-grid-${viewLayout}`}
           >
-            {viewPanes.map((pane, idx) => (
-              <ViewportPane
-                key={pane.id}
-                pane={pane}
-                onClose={handleClosePane}
-                onChangeType={handleChangePaneType}
-                canClose={viewPanes.length > 1}
-                viewer3DRef={
-                  idx === 0 && pane.type !== "2d-sheet"
-                    ? viewer3DRef
-                    : undefined
-                }
-                onModelLoaded={handleModelLoaded}
-                onElementSelected={handleElementSelected}
-                creationTool={creationTool}
-                onElementCreated={handleElementCreated}
-                bimElements={bimElements}
-                snapEnabled={snapEnabled}
-                gridSize={gridSize}
-                pdfCanvasRef={
-                  pane.type === "2d-sheet" ? pdfCanvasRef : undefined
-                }
-                onPageChange={handlePageChange}
-                hasPdf={hasPdf}
-                activeTool={activeTool}
-                onMarkupCreated={handleMarkupCreated}
-                currentPage={currentPage}
-                selectedElement={selectedElement}
-              />
-            ))}
+            {viewPanes.map((pane) => {
+              const isFirst3D =
+                pane.type !== "2d-sheet" &&
+                viewPanes.find((p) => p.type !== "2d-sheet")?.id === pane.id;
+              return (
+                <ViewportPane
+                  key={`${pane.id}-${pane.type}`}
+                  pane={pane}
+                  onClose={handleClosePane}
+                  onChangeType={handleChangePaneType}
+                  canClose={viewPanes.length > 1}
+                  viewer3DRef={isFirst3D ? viewer3DRef : undefined}
+                  onModelLoaded={handleModelLoaded}
+                  onElementSelected={handleElementSelected}
+                  creationTool={creationTool}
+                  onElementCreated={handleElementCreated}
+                  bimElements={bimElements}
+                  snapEnabled={snapEnabled}
+                  gridSize={gridSize}
+                  pdfCanvasRef={
+                    pane.type === "2d-sheet" ? pdfCanvasRef : undefined
+                  }
+                  onPageChange={handlePageChange}
+                  hasPdf={hasPdf}
+                  activeTool={activeTool}
+                  onMarkupCreated={handleMarkupCreated}
+                  currentPage={currentPage}
+                  selectedElement={selectedElement}
+                />
+              );
+            })}
           </div>
         </div>
 
