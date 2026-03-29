@@ -533,7 +533,9 @@ body,
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -612,6 +614,118 @@ body,
 
 .panel-resize-handle:hover {
   background: var(--accent-blue);
+}
+
+/* ── Multi-pane Viewport Grid ────────────────────────────────────── */
+
+.viewport-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+}
+
+.viewport-grid-single {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.viewport-grid-2-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.viewport-grid-3-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.viewport-grid-3-up > :first-child {
+  grid-row: 1 / 3;
+}
+
+.viewport-grid-4-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* ── Viewport Pane ───────────────────────────────────────────────── */
+
+.viewport-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewport-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 24px;
+  gap: 6px;
+}
+
+.viewport-pane-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.viewport-pane-type-select {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 2px;
+  cursor: pointer;
+  outline: none;
+}
+
+.viewport-pane-type-select:hover {
+  color: var(--foreground);
+}
+
+.viewport-pane-type-select:focus {
+  color: var(--foreground);
+}
+
+.viewport-pane-type-select option {
+  background: var(--panel-bg);
+  color: var(--foreground);
+}
+
+.viewport-pane-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.viewport-pane-close:hover {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ef5350;
+}
+
+.viewport-pane-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Multi-window views** — Revit-style multi-pane viewport system supporting up to 4 simultaneous views; layout presets (Single, 2-Up, 3-Up, 4-Up) accessible from the View ribbon tab or keyboard shortcuts 1-4; each pane can independently be set to 3D View, Plan View, Front/Back/Left/Right Elevation, or 2D Sheet via a dropdown in the pane header; panes can be closed individually and new views added from the "Add View" ribbon group
 - **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
 - **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar
 - **Element manipulation tools** — Move (+/-X, +/-Z), Rotate (+/-45°), Copy, and Mirror tools in the Modify ribbon tab for transforming placed elements

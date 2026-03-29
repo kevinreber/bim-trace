@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import AnnotationLayer from "@/components/AnnotationLayer";
-import PdfViewer from "@/components/PdfViewer";
 import RibbonToolbar from "@/components/RibbonToolbar";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
-import Viewer3D from "@/components/Viewer3D";
+import ViewportPane from "@/components/ViewportPane";
 import {
   clearProject,
   exportProjectJSON,
@@ -24,14 +22,15 @@ import type {
   SpatialNode,
   UndoAction,
   Viewer3DHandle,
+  ViewLayout,
+  ViewPane,
+  ViewPaneType,
 } from "@/types";
-import { DEFAULT_LEVELS, DEFAULT_PARAMS } from "@/types";
+import { DEFAULT_LEVELS, DEFAULT_PANES, VIEW_PANE_LABELS } from "@/types";
 
 export const Route = createFileRoute("/")({
   component: Home,
 });
-
-type ViewMode = "split" | "3d" | "2d";
 
 interface Toast {
   id: string;
@@ -45,7 +44,8 @@ function Home() {
     useState<SelectedElement | null>(null);
   const [markups, setMarkups] = useState<Markup[]>([]);
   const [activeTool, setActiveTool] = useState<AnnotationTool>("select");
-  const [viewMode, setViewMode] = useState<ViewMode>("3d");
+  const [viewPanes, setViewPanes] = useState<ViewPane[]>(DEFAULT_PANES);
+  const [viewLayout, setViewLayout] = useState<ViewLayout>("single");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasPdf, setHasPdf] = useState(false);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -214,7 +214,6 @@ function Home() {
   const handleMarkupNavigate = useCallback((markup: Markup) => {
     if (!markup.linkedBimGuid) return;
     viewer3DRef.current?.flyToElement(markup.linkedBimGuid);
-    setViewMode((prev) => (prev === "2d" ? "split" : prev));
   }, []);
 
   // Select an authored element from the Project Browser tree
@@ -232,7 +231,6 @@ function Home() {
       });
       // Fly to it in the 3D view
       viewer3DRef.current?.flyToElement(el.id);
-      setViewMode((prev) => (prev === "2d" ? "split" : prev));
     },
     [bimElements],
   );
@@ -262,6 +260,81 @@ function Home() {
     },
     [selectedElement],
   );
+
+  // ── Multi-pane management ────────────────────────────────────
+  const handleAddPane = useCallback(
+    (type: ViewPaneType) => {
+      const newPane: ViewPane = {
+        id: crypto.randomUUID(),
+        type,
+        title: VIEW_PANE_LABELS[type],
+      };
+      setViewPanes((prev) => {
+        const next = [...prev, newPane];
+        if (next.length >= 4) setViewLayout("4-up");
+        else if (next.length >= 3) setViewLayout("3-up");
+        else if (next.length >= 2) setViewLayout("2-up");
+        return next;
+      });
+      showToast(`Opened ${VIEW_PANE_LABELS[type]}`, "info");
+    },
+    [showToast],
+  );
+
+  const handleClosePane = useCallback((id: string) => {
+    setViewPanes((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      if (next.length <= 1) setViewLayout("single");
+      else if (next.length === 2) setViewLayout("2-up");
+      else if (next.length === 3) setViewLayout("3-up");
+      return next;
+    });
+  }, []);
+
+  const handleChangePaneType = useCallback((id: string, type: ViewPaneType) => {
+    setViewPanes((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, type, title: VIEW_PANE_LABELS[type] } : p,
+      ),
+    );
+  }, []);
+
+  const handleSetLayout = useCallback((layout: ViewLayout) => {
+    setViewLayout(layout);
+    setViewPanes((prev) => {
+      const target =
+        layout === "single"
+          ? 1
+          : layout === "2-up"
+            ? 2
+            : layout === "3-up"
+              ? 3
+              : 4;
+      if (prev.length < target) {
+        // Add default panes to fill
+        const defaults: ViewPaneType[] = [
+          "3d",
+          "plan",
+          "front-elevation",
+          "right-elevation",
+        ];
+        const panes = [...prev];
+        while (panes.length < target) {
+          const type = defaults[panes.length] ?? "3d";
+          panes.push({
+            id: crypto.randomUUID(),
+            type,
+            title: VIEW_PANE_LABELS[type],
+          });
+        }
+        return panes;
+      }
+      if (prev.length > target) {
+        return prev.slice(0, target);
+      }
+      return prev;
+    });
+  }, []);
 
   // BIM authoring callbacks
   const handleElementCreated = useCallback(
@@ -466,17 +539,21 @@ function Home() {
         }
       }
 
-      // View mode shortcuts
+      // View layout shortcuts
       if (e.key === "1") {
-        setViewMode("split");
+        handleSetLayout("single");
         return;
       }
       if (e.key === "2") {
-        setViewMode("3d");
+        handleSetLayout("2-up");
         return;
       }
       if (e.key === "3") {
-        setViewMode("2d");
+        handleSetLayout("3-up");
+        return;
+      }
+      if (e.key === "4") {
+        handleSetLayout("4-up");
         return;
       }
 
@@ -533,6 +610,7 @@ function Home() {
     handleRedo,
     handleBimElementDelete,
     handleBimElementUpdate,
+    handleSetLayout,
     selectedElement,
     bimElements,
     snapEnabled,
@@ -551,8 +629,10 @@ function Home() {
         annotationTool={activeTool}
         onAnnotationToolChange={setActiveTool}
         hasPdf={hasPdf}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        viewLayout={viewLayout}
+        onLayoutChange={handleSetLayout}
+        onAddPane={handleAddPane}
+        viewPanes={viewPanes}
         onUndo={handleUndo}
         onRedo={handleRedo}
         snapEnabled={snapEnabled}
@@ -590,102 +670,61 @@ function Home() {
           />
         </div>
 
-        {/* Center: Viewports */}
+        {/* Center: Multi-pane Viewports */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Viewport tabs (Revit-style view tabs) */}
+          {/* Viewport tabs showing open panes */}
           <div className="viewport-tabs">
-            <button
-              type="button"
-              className={`viewport-tab ${viewMode === "3d" || viewMode === "split" ? "active" : ""}`}
-              onClick={() => setViewMode(viewMode === "split" ? "split" : "3d")}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                aria-hidden="true"
-              >
-                <path d="M12 2 L22 8 L22 16 L12 22 L2 16 L2 8 Z" />
-                <path d="M12 2 L12 22" />
-                <path d="M2 8 L22 8" opacity="0.4" />
-              </svg>
-              3D View
-            </button>
-            <button
-              type="button"
-              className={`viewport-tab ${viewMode === "2d" ? "active" : ""}`}
-              onClick={() => setViewMode("2d")}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                aria-hidden="true"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <line x1="3" y1="8" x2="21" y2="8" />
-                <line x1="7" y1="3" x2="7" y2="21" />
-              </svg>
-              2D Sheet
-            </button>
-            {viewMode === "split" && (
-              <span className="viewport-tab-badge">Split</span>
-            )}
+            {viewPanes.map((pane) => (
+              <span key={pane.id} className="viewport-tab active">
+                {pane.title}
+              </span>
+            ))}
+            <span className="viewport-tab-badge">
+              {viewLayout === "single"
+                ? "Single"
+                : viewLayout === "2-up"
+                  ? "2-Up"
+                  : viewLayout === "3-up"
+                    ? "3-Up"
+                    : "4-Up"}
+            </span>
           </div>
 
-          {/* Viewport content */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* 3D Viewer */}
-            {(viewMode === "split" || viewMode === "3d") && (
-              <div
-                className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full relative`}
-                style={{
-                  borderRight:
-                    viewMode === "split"
-                      ? "1px solid var(--border)"
-                      : undefined,
-                }}
-              >
-                <Viewer3D
-                  ref={viewer3DRef}
+          {/* Viewport grid */}
+          <div
+            className={`flex-1 overflow-hidden viewport-grid viewport-grid-${viewLayout}`}
+          >
+            {viewPanes.map((pane) => {
+              const isFirst3D =
+                pane.type !== "2d-sheet" &&
+                viewPanes.find((p) => p.type !== "2d-sheet")?.id === pane.id;
+              return (
+                <ViewportPane
+                  key={`${pane.id}-${pane.type}`}
+                  pane={pane}
+                  onClose={handleClosePane}
+                  onChangeType={handleChangePaneType}
+                  canClose={viewPanes.length > 1}
+                  viewer3DRef={isFirst3D ? viewer3DRef : undefined}
                   onModelLoaded={handleModelLoaded}
                   onElementSelected={handleElementSelected}
                   creationTool={creationTool}
                   onElementCreated={handleElementCreated}
                   bimElements={bimElements}
-                  defaultParams={DEFAULT_PARAMS}
                   snapEnabled={snapEnabled}
                   gridSize={gridSize}
+                  pdfCanvasRef={
+                    pane.type === "2d-sheet" ? pdfCanvasRef : undefined
+                  }
+                  onPageChange={handlePageChange}
+                  hasPdf={hasPdf}
+                  activeTool={activeTool}
+                  onMarkupCreated={handleMarkupCreated}
+                  currentPage={currentPage}
+                  selectedElement={selectedElement}
                 />
-              </div>
-            )}
-
-            {/* 2D PDF Viewer */}
-            {(viewMode === "split" || viewMode === "2d") && (
-              <div
-                className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full flex flex-col`}
-              >
-                <div className="flex-1 relative overflow-hidden">
-                  <PdfViewer
-                    onPageChange={handlePageChange}
-                    canvasRef={pdfCanvasRef}
-                  />
-                  {hasPdf && (
-                    <AnnotationLayer
-                      activeTool={activeTool}
-                      pdfCanvasRef={pdfCanvasRef}
-                      onMarkupCreated={handleMarkupCreated}
-                      currentPage={currentPage}
-                      selectedElement={selectedElement}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
 
@@ -740,7 +779,7 @@ function Home() {
           )}
           {hasPdf && <span>Page {currentPage}</span>}
           <span style={{ color: "var(--text-muted)" }}>
-            Shift+Key = Create | G = Snap | 1/2/3 = View
+            Shift+Key = Create | G = Snap | 1-4 = Layout
           </span>
         </div>
       </div>

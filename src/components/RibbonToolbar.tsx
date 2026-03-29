@@ -6,6 +6,9 @@ import type {
   GridSize,
   Level,
   SelectedElement,
+  ViewLayout,
+  ViewPane,
+  ViewPaneType,
 } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -22,8 +25,10 @@ interface RibbonToolbarProps {
   onAnnotationToolChange: (tool: AnnotationTool) => void;
   hasPdf: boolean;
   // View
-  viewMode: "split" | "3d" | "2d";
-  onViewModeChange: (mode: "split" | "3d" | "2d") => void;
+  viewLayout: ViewLayout;
+  onLayoutChange: (layout: ViewLayout) => void;
+  onAddPane: (type: ViewPaneType) => void;
+  viewPanes: ViewPane[];
   // Undo/Redo
   onUndo: () => void;
   onRedo: () => void;
@@ -589,8 +594,10 @@ export default function RibbonToolbar({
   annotationTool,
   onAnnotationToolChange,
   hasPdf,
-  viewMode,
-  onViewModeChange,
+  viewLayout,
+  onLayoutChange,
+  onAddPane,
+  viewPanes,
   onUndo,
   onRedo,
   snapEnabled,
@@ -1118,18 +1125,35 @@ export default function RibbonToolbar({
 
         {activeTab === "view" && (
           <div className="ribbon-panel-content">
-            {/* View mode group */}
+            {/* Layout presets group */}
             <div className="ribbon-group">
               <div className="ribbon-group-tools">
-                {(["split", "3d", "2d"] as const).map((mode) => (
+                {(
+                  [
+                    { id: "single", label: "Single", key: "1" },
+                    { id: "2-up", label: "2-Up", key: "2" },
+                    { id: "3-up", label: "3-Up", key: "3" },
+                    { id: "4-up", label: "4-Up", key: "4" },
+                  ] as { id: ViewLayout; label: string; key: string }[]
+                ).map((l) => (
                   <button
-                    key={mode}
+                    key={l.id}
                     type="button"
-                    onClick={() => onViewModeChange(mode)}
-                    className={`ribbon-tool-btn ${viewMode === mode ? "active" : ""}`}
-                    title={`${mode === "split" ? "Split View" : mode.toUpperCase() + " View"} (${mode === "split" ? "1" : mode === "3d" ? "2" : "3"})`}
+                    onClick={() => onLayoutChange(l.id)}
+                    className={`ribbon-tool-btn ${viewLayout === l.id ? "active" : ""}`}
+                    title={`${l.label} Layout (${l.key})`}
                   >
-                    {mode === "split" ? (
+                    {l.id === "single" ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                      </svg>
+                    ) : l.id === "2-up" ? (
                       <svg
                         viewBox="0 0 24 24"
                         className="w-5 h-5"
@@ -1140,7 +1164,7 @@ export default function RibbonToolbar({
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <line x1="12" y1="3" x2="12" y2="21" />
                       </svg>
-                    ) : mode === "3d" ? (
+                    ) : l.id === "3-up" ? (
                       <svg
                         viewBox="0 0 24 24"
                         className="w-5 h-5"
@@ -1148,9 +1172,9 @@ export default function RibbonToolbar({
                         stroke="currentColor"
                         strokeWidth={1.5}
                       >
-                        <path d="M12 2 L22 8 L22 16 L12 22 L2 16 L2 8 Z" />
-                        <path d="M12 2 L12 22" />
-                        <path d="M2 8 L22 8" opacity="0.4" />
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="12" y1="3" x2="12" y2="21" />
+                        <line x1="12" y1="12" x2="21" y2="12" />
                       </svg>
                     ) : (
                       <svg
@@ -1161,17 +1185,101 @@ export default function RibbonToolbar({
                         strokeWidth={1.5}
                       >
                         <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <line x1="3" y1="8" x2="21" y2="8" />
-                        <line x1="7" y1="3" x2="7" y2="21" />
+                        <line x1="12" y1="3" x2="12" y2="21" />
+                        <line x1="3" y1="12" x2="21" y2="12" />
                       </svg>
                     )}
-                    <span className="ribbon-tool-label">
-                      {mode === "split" ? "Split" : mode.toUpperCase()}
-                    </span>
+                    <span className="ribbon-tool-label">{l.label}</span>
                   </button>
                 ))}
               </div>
-              <div className="ribbon-group-label">Windows</div>
+              <div className="ribbon-group-label">Layout</div>
+            </div>
+
+            {/* Add view group */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={() => onAddPane("3d")}
+                  className="ribbon-tool-btn"
+                  title="Add 3D View"
+                  disabled={viewPanes.length >= 4}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path d="M12 2 L22 8 L22 16 L12 22 L2 16 L2 8 Z" />
+                    <path d="M12 2 L12 22" />
+                  </svg>
+                  <span className="ribbon-tool-label">3D</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAddPane("plan")}
+                  className="ribbon-tool-btn"
+                  title="Add Plan View"
+                  disabled={viewPanes.length >= 4}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="1" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="12" y1="3" x2="12" y2="21" />
+                    <circle cx="12" cy="12" r="2" />
+                  </svg>
+                  <span className="ribbon-tool-label">Plan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAddPane("front-elevation")}
+                  className="ribbon-tool-btn"
+                  title="Add Front Elevation"
+                  disabled={viewPanes.length >= 4}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="3" y="6" width="18" height="14" rx="1" />
+                    <path d="M3 12 L12 6 L21 12" />
+                  </svg>
+                  <span className="ribbon-tool-label">Elev.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAddPane("2d-sheet")}
+                  className="ribbon-tool-btn"
+                  title="Add 2D Sheet"
+                  disabled={viewPanes.length >= 4}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="3" y1="8" x2="21" y2="8" />
+                    <line x1="7" y1="3" x2="7" y2="21" />
+                  </svg>
+                  <span className="ribbon-tool-label">Sheet</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Add View</div>
             </div>
 
             {/* Snap group */}
