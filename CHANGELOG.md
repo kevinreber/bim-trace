@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Multi-select** — Ctrl+click to add/remove elements from selection; box/marquee select by click-dragging in the 3D viewport to select all elements within the rectangle; multi-select highlights all selected elements in the Project Browser tree and shows a selection summary with type counts in the Properties panel
+- **Bulk delete** — delete all selected elements at once via Delete/Backspace key or the bulk delete button in the Properties panel; arrow key movement now applies to all selected elements simultaneously
+- **Dimension labels** — selected elements display floating dimension labels in the 3D viewport showing key measurements (length, height, width, depth) as canvas-textured sprites positioned above each element
+
+### Changed
+- **Status bar** — updated keyboard shortcuts hint to show multi-select shortcut (Ctrl+Click); shows count of selected elements when more than one is selected
+
+### Added
 - **Multi-window views** — Revit-style multi-pane viewport system supporting up to 4 simultaneous views; layout presets (Single, 2-Up, 3-Up, 4-Up) accessible from the View ribbon tab or keyboard shortcuts 1-4; each pane can independently be set to 3D View, Plan View, Front/Back/Left/Right Elevation, or 2D Sheet via a dropdown in the pane header; panes can be closed individually and new views added from the "Add View" ribbon group
 - **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
 - **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar
