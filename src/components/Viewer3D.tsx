@@ -13,10 +13,12 @@ import type {
   CameraPreset,
   CreationTool,
   DEFAULT_PARAMS,
+  GridLine,
   GridSize,
   SelectedElement,
   SpatialNode,
   Viewer3DHandle,
+  WallAlignMode,
 } from "@/types";
 import {
   buildBeamMesh,
@@ -61,6 +63,9 @@ interface Viewer3DProps {
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
+  gridLines?: GridLine[];
+  onGridLineCreated?: (gl: GridLine) => void;
+  wallAlignMode?: WallAlignMode;
   cameraPreset?: CameraPreset;
 }
 
@@ -112,6 +117,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
+    gridLines = [],
+    onGridLineCreated,
+    wallAlignMode = "center",
     cameraPreset,
   },
   ref,
@@ -153,6 +161,16 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   snapEnabledRef.current = snapEnabled;
   const gridSizeRef = useRef(gridSize);
   gridSizeRef.current = gridSize;
+
+  // Gridline refs
+  const gridLinesRef = useRef(gridLines);
+  gridLinesRef.current = gridLines;
+  const wallAlignModeRef = useRef(wallAlignMode);
+  wallAlignModeRef.current = wallAlignMode;
+  /** Rendered gridline objects (THREE.Group per gridline) */
+  const gridLineObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
+  /** Auto-incrementing gridline label counter */
+  const gridLineLabelCounterRef = useRef(1);
 
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -485,11 +503,74 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const didHit = raycaster.ray.intersectPlane(groundPlaneRef.current, hit);
       if (!didHit) return null;
 
-      // Apply snap-to-grid
+      // Apply gridline snap (higher priority) then grid snap
       if (snapEnabledRef.current) {
-        const gs = gridSizeRef.current;
-        hit.x = Math.round(hit.x / gs) * gs;
-        hit.z = Math.round(hit.z / gs) * gs;
+        let snappedToGridLine = false;
+        const gls = gridLinesRef.current;
+        const threshold: number = gridSizeRef.current;
+
+        if (gls.length > 0) {
+          let bestDist: number = threshold;
+          let bestNx = hit.x;
+          let bestNz = hit.z;
+          let bestPerpX = 0;
+          let bestPerpZ = 0;
+
+          for (const gl of gls) {
+            const gdx = gl.end.x - gl.start.x;
+            const gdz = gl.end.z - gl.start.z;
+            const len2 = gdx * gdx + gdz * gdz;
+            if (len2 < 0.0001) continue;
+            const len = Math.sqrt(len2);
+
+            // Perpendicular distance from hit to the infinite line
+            const vx = hit.x - gl.start.x;
+            const vz = hit.z - gl.start.z;
+            // Signed cross product gives perpendicular distance
+            const cross = vx * (gdz / len) - vz * (gdx / len);
+            const dist = Math.abs(cross);
+
+            if (dist < bestDist) {
+              bestDist = dist;
+              // Project hit onto the line (nearest point)
+              const t = (vx * gdx + vz * gdz) / len2;
+              bestNx = gl.start.x + t * gdx;
+              bestNz = gl.start.z + t * gdz;
+              // Perpendicular unit vector (pointing away from line toward hit)
+              bestPerpX = -gdz / len;
+              bestPerpZ = gdx / len;
+              if (cross < 0) {
+                bestPerpX = -bestPerpX;
+                bestPerpZ = -bestPerpZ;
+              }
+            }
+          }
+
+          if (bestDist < threshold) {
+            snappedToGridLine = true;
+            // Apply wall alignment offset
+            const tool = creationToolRef.current;
+            if (tool === "wall") {
+              const wallThickness = defaultParamsRef.current.wall.thickness;
+              const mode = wallAlignModeRef.current;
+              let offset = 0;
+              if (mode === "left") offset = wallThickness / 2;
+              else if (mode === "right") offset = -wallThickness / 2;
+              hit.x = bestNx + bestPerpX * offset;
+              hit.z = bestNz + bestPerpZ * offset;
+            } else {
+              hit.x = bestNx;
+              hit.z = bestNz;
+            }
+          }
+        }
+
+        // Fall back to regular grid snap if not snapped to gridline
+        if (!snappedToGridLine) {
+          const gs = gridSizeRef.current;
+          hit.x = Math.round(hit.x / gs) * gs;
+          hit.z = Math.round(hit.z / gs) * gs;
+        }
       }
 
       return hit;
@@ -839,6 +920,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           );
           break;
         }
+        case "gridline": {
+          // Ghost line from start to cursor
+          const s = start ?? end;
+          const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(s.x, 0.02, s.z),
+            new THREE.Vector3(end.x, 0.02, end.z),
+          ]);
+          const lineMat = new THREE.LineBasicMaterial({
+            color: 0x06b6d4,
+            transparent: true,
+            opacity: 0.6,
+          });
+          // THREE.Line extends Object3D, not Mesh — wrap in a mesh-like group
+          const lineObj = new THREE.Line(lineGeo, lineMat);
+          // Use a tiny invisible mesh to satisfy the ghostMeshRef type
+          const dummyGeo = new THREE.SphereGeometry(0.05);
+          mesh = new THREE.Mesh(dummyGeo, GHOST_MATERIAL);
+          mesh.position.set(end.x, 0.02, end.z);
+          mesh.add(lineObj);
+          break;
+        }
         default:
           return;
       }
@@ -848,6 +950,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       ghostMeshRef.current = mesh;
     },
     [clearGhost],
+  );
+
+  // ── Ortho constraint (Shift = axis-lock) ───────────────────
+
+  /** When Shift is held and a start point exists, constrain the hit to
+   *  the nearest axis (horizontal or vertical) relative to the start. */
+  const applyOrthoConstraint = useCallback(
+    (hit: THREE.Vector3, shiftKey: boolean): void => {
+      const start = pendingStartRef.current;
+      if (!start || !shiftKey) return;
+      const adx = Math.abs(hit.x - start.x);
+      const adz = Math.abs(hit.z - start.z);
+      if (adx >= adz) {
+        // Constrain to horizontal (same Z as start)
+        hit.z = start.z;
+      } else {
+        // Constrain to vertical (same X as start)
+        hit.x = start.x;
+      }
+    },
+    [],
   );
 
   // ── Mouse move for ghost + snap indicator ──────────────────
@@ -865,6 +988,19 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       const hit = raycastGround(e);
       if (!hit) return;
+
+      // Ortho constraint: Shift locks to horizontal or vertical
+      applyOrthoConstraint(hit, e.shiftKey);
+
+      // For gridline tool, just show snap indicator and ghost (no wall snap)
+      if (tool === "gridline") {
+        if (snapIndicatorRef.current) {
+          snapIndicatorRef.current.position.set(hit.x, 0.02, hit.z);
+          snapIndicatorRef.current.visible = true;
+        }
+        updateGhostPreview(hit);
+        return;
+      }
 
       // For doors and windows, try snapping to a wall first
       if (tool === "door" || tool === "window") {
@@ -894,7 +1030,13 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       updateGhostPreview(hit);
     },
-    [raycastGround, raycastWalls, updateGhostPreview, clearGhost],
+    [
+      raycastGround,
+      raycastWalls,
+      updateGhostPreview,
+      clearGhost,
+      applyOrthoConstraint,
+    ],
   );
 
   // ── Box select handlers ─────────────────────────────────────
@@ -1033,6 +1175,137 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [bimElements]);
 
+  // ── Sync gridlines → scene ─────────────────────────────────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const scene = world.scene.three;
+
+    // Remove stale gridline objects
+    const currentGlIds = new Set(gridLines.map((gl) => gl.id));
+    for (const [id, group] of Array.from(
+      gridLineObjectsRef.current.entries(),
+    )) {
+      if (!currentGlIds.has(id)) {
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+        gridLineObjectsRef.current.delete(id);
+      }
+    }
+
+    // Add or update gridlines
+    const GRIDLINE_COLOR = 0x06b6d4; // cyan
+    const EXTEND = 50; // extend line 50m beyond each end
+
+    for (const gl of gridLines) {
+      // Remove existing to rebuild
+      const existing = gridLineObjectsRef.current.get(gl.id);
+      if (existing) {
+        scene.remove(existing);
+        existing.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+      }
+
+      const group = new THREE.Group();
+      group.userData = { gridLineId: gl.id };
+
+      // Compute direction and extend the line
+      const dx = gl.end.x - gl.start.x;
+      const dz = gl.end.z - gl.start.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len < 0.01) continue;
+      const dirX = dx / len;
+      const dirZ = dz / len;
+
+      const extStart = new THREE.Vector3(
+        gl.start.x - dirX * EXTEND,
+        0.02,
+        gl.start.z - dirZ * EXTEND,
+      );
+      const extEnd = new THREE.Vector3(
+        gl.end.x + dirX * EXTEND,
+        0.02,
+        gl.end.z + dirZ * EXTEND,
+      );
+
+      // Dashed line
+      const lineMat = new THREE.LineDashedMaterial({
+        color: GRIDLINE_COLOR,
+        dashSize: 0.5,
+        gapSize: 0.2,
+        linewidth: 1,
+      });
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        extStart,
+        extEnd,
+      ]);
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.computeLineDistances();
+      group.add(line);
+
+      // Bubble at start end
+      const bubbleGeo = new THREE.CircleGeometry(0.4, 24);
+      const bubbleMat = new THREE.MeshBasicMaterial({
+        color: GRIDLINE_COLOR,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      });
+      const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+      bubble.position.set(gl.start.x, 0.03, gl.start.z);
+      bubble.rotation.x = -Math.PI / 2;
+      bubble.renderOrder = 1002;
+      group.add(bubble);
+
+      // Label sprite at start
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const fontSize = 32;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      const tw = ctx.measureText(gl.label).width;
+      canvas.width = Math.max(tw + 16, 48);
+      canvas.height = fontSize + 16;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = "#ffffff";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(gl.label, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.set(gl.start.x, 0.04, gl.start.z);
+      const aspect = canvas.width / canvas.height;
+      sprite.scale.set(aspect * 0.5, 0.5, 1);
+      sprite.renderOrder = 1003;
+      group.add(sprite);
+
+      scene.add(group);
+      gridLineObjectsRef.current.set(gl.id, group);
+    }
+
+    // Update label counter
+    if (gridLines.length > 0) {
+      gridLineLabelCounterRef.current = gridLines.length + 1;
+    }
+  }, [gridLines]);
+
   // ── Click handler ──────────────────────────────────────────
 
   const handleClick = useCallback(
@@ -1053,8 +1326,32 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         const hit = raycastGround(e);
         if (!hit) return;
 
+        // Ortho constraint: Shift locks to horizontal or vertical
+        applyOrthoConstraint(hit, e.shiftKey);
+
         const point = { x: hit.x, z: hit.z };
         const params = defaultParamsRef.current;
+        // Gridline creation (two-click, not a BIM element)
+        if (tool === "gridline") {
+          if (!pendingStartRef.current) {
+            pendingStartRef.current = point;
+            return;
+          }
+          const glStart = pendingStartRef.current;
+          pendingStartRef.current = null;
+          clearGhost();
+
+          const label = String(gridLineLabelCounterRef.current++);
+          const gl: GridLine = {
+            id: crypto.randomUUID(),
+            label,
+            start: glStart,
+            end: point,
+          };
+          onGridLineCreated?.(gl);
+          return;
+        }
+
         const needsTwoClicks =
           tool === "wall" ||
           tool === "slab" ||
@@ -1190,6 +1487,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       raycastGround,
       raycastWalls,
       clearGhost,
+      applyOrthoConstraint,
     ],
   );
 
@@ -1350,20 +1648,40 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       {/* Creation mode hint */}
       {creationTool !== "none" && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-lg bg-green-900/80 border border-green-700 text-green-300 text-xs backdrop-blur-sm">
-          {creationTool === "wall" ||
-          creationTool === "slab" ||
-          creationTool === "beam" ||
-          creationTool === "ceiling" ||
-          creationTool === "roof" ||
-          creationTool === "stair" ||
-          creationTool === "railing" ||
-          creationTool === "curtainWall" ||
-          creationTool === "duct" ||
-          creationTool === "pipe" ? (
+          {creationTool === "gridline" ? (
             pendingStartRef.current ? (
-              <span>Click to set end point &middot; Esc to cancel</span>
+              <span>
+                Click to set gridline end point &middot; Shift = ortho
+                &middot; Esc to cancel
+              </span>
             ) : (
-              <span>Click to set start point</span>
+              <span>Click to set gridline start point</span>
+            )
+          ) : creationTool === "wall" ||
+            creationTool === "slab" ||
+            creationTool === "beam" ||
+            creationTool === "ceiling" ||
+            creationTool === "roof" ||
+            creationTool === "stair" ||
+            creationTool === "railing" ||
+            creationTool === "curtainWall" ||
+            creationTool === "duct" ||
+            creationTool === "pipe" ? (
+            pendingStartRef.current ? (
+              <span>
+                Click to set end point &middot; Shift = ortho &middot; Esc
+                to cancel
+                {creationTool === "wall" && gridLines.length > 0
+                  ? ` · Tab = Align (${wallAlignMode})`
+                  : ""}
+              </span>
+            ) : (
+              <span>
+                Click to set start point
+                {creationTool === "wall" && gridLines.length > 0
+                  ? ` · Tab = Align (${wallAlignMode})`
+                  : ""}
+              </span>
             )
           ) : creationTool === "door" || creationTool === "window" ? (
             <span>Hover over a wall and click to place {creationTool}</span>

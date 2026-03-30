@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Gridlines** — user-created reference lines for design alignment; two-click placement via the Architecture ribbon's Reference group; gridlines render as dashed cyan lines with labeled bubbles extending across the viewport
+- **Snap to gridlines** — when snap is enabled, elements automatically snap to nearby gridlines (takes priority over regular grid snap); works with all element types during creation
+- **Wall alignment mode** — press Tab during wall creation to cycle alignment (left / center / right) relative to gridlines; offsets the wall by half its thickness so the chosen face aligns with the gridline
+- **Gridline persistence** — gridlines are saved/restored with auto-save and project export/import
+- **Ortho constraint (Shift)** — hold Shift during two-click placement (walls, gridlines, beams, etc.) to constrain the line to be perfectly horizontal or vertical based on the dominant direction
+
+### Added
 - **Multi-select** — Ctrl+click to add/remove elements from selection; box/marquee select by click-dragging in the 3D viewport to select all elements within the rectangle; multi-select highlights all selected elements in the Project Browser tree and shows a selection summary with type counts in the Properties panel
 - **Bulk delete** — delete all selected elements at once via Delete/Backspace key or the bulk delete button in the Properties panel; arrow key movement now applies to all selected elements simultaneously
 - **Dimension labels** — selected elements display floating dimension labels in the 3D viewport showing key measurements (length, height, width, depth) as canvas-textured sprites positioned above each element

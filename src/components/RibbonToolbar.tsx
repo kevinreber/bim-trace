@@ -115,6 +115,10 @@ const ARCHITECTURE_GROUPS: ToolGroupDef[] = [
       { id: "lightFixture", label: "Light", shortcut: "F" },
     ],
   },
+  {
+    label: "Reference",
+    tools: [{ id: "gridline", label: "Gridline" }],
+  },
 ];
 
 const ANNOTATE_GROUPS: ToolGroupDef[] = [
@@ -405,6 +409,35 @@ function ToolIcon({ id }: { id: string }) {
         <line x1="12" y1="19" x2="12" y2="22" />
         <line x1="2" y1="12" x2="5" y2="12" />
         <line x1="19" y1="12" x2="22" y2="12" />
+      </svg>
+    ),
+    gridline: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <line
+          x1="12"
+          y1="2"
+          x2="12"
+          y2="22"
+          strokeDasharray="3 2"
+          stroke="#06b6d4"
+        />
+        <circle cx="12" cy="4" r="2.5" stroke="#06b6d4" />
+        <text
+          x="12"
+          y="5.5"
+          textAnchor="middle"
+          fontSize="4"
+          fill="#06b6d4"
+          stroke="none"
+        >
+          A
+        </text>
       </svg>
     ),
     // Annotation icons

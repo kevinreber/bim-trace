@@ -1,4 +1,4 @@
-import type { BimElement, Level, Markup } from "@/types";
+import type { BimElement, GridLine, Level, Markup } from "@/types";
 
 const DB_NAME = "bim-trace";
 const DB_VERSION = 1;
@@ -10,6 +10,7 @@ export interface ProjectData {
   markups: Markup[];
   levels: Level[];
   activeLevel: string;
+  gridLines?: GridLine[];
   savedAt: number;
 }
 
