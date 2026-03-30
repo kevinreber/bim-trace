@@ -191,6 +191,7 @@ export type ViewPaneType =
   | "back-elevation"
   | "left-elevation"
   | "right-elevation"
+  | "section"
   | "2d-sheet";
 
 export interface ViewPane {
@@ -208,6 +209,7 @@ export const VIEW_PANE_LABELS: Record<ViewPaneType, string> = {
   "back-elevation": "Back Elevation",
   "left-elevation": "Left Elevation",
   "right-elevation": "Right Elevation",
+  section: "Section",
   "2d-sheet": "2D Sheet",
 };
 
@@ -221,6 +223,11 @@ export interface CameraPreset {
   position: [number, number, number];
   target: [number, number, number];
   orthographic: boolean;
+  /** Optional clipping plane for section views */
+  sectionPlane?: {
+    normal: [number, number, number];
+    point: [number, number, number];
+  };
 }
 
 export const CAMERA_PRESETS: Record<string, CameraPreset> = {
@@ -253,6 +260,15 @@ export const CAMERA_PRESETS: Record<string, CameraPreset> = {
     position: [50, 5, 0],
     target: [0, 5, 0],
     orthographic: true,
+  },
+  section: {
+    position: [0, 5, 50],
+    target: [0, 5, 0],
+    orthographic: true,
+    sectionPlane: {
+      normal: [0, 0, -1],
+      point: [0, 0, 0],
+    },
   },
 };
 

@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Plan View projection** — Plan View now uses true orthographic projection instead of perspective, making elements appear flat/2D as expected in architectural plan views
+- **Elevation view projection** — All elevation views (Front, Back, Left, Right) now use orthographic projection for accurate 2D representation
+
+### Added
+- **Section view** — new Section view type with a clipping plane that cuts through the model; accessible from the View ribbon tab's "Add View" group and the pane type dropdown
+- **2D navigation mode** — Plan and Elevation views now lock camera rotation, allowing only pan and zoom for a true 2D drafting experience
+
+### Changed
+- **Camera system** — upgraded from SimpleCamera to OrthoPerspectiveCamera for proper orthographic/perspective switching and navigation mode support
+- **Grid rendering** — grid fade effect is disabled in orthographic views for cleaner appearance
+
 ### Added
 - **Gridlines** — user-created reference lines for design alignment; two-click placement via the Architecture ribbon's Reference group; gridlines render as dashed cyan lines with labeled bubbles extending across the viewport
 - **Snap to gridlines** — when snap is enabled, elements automatically snap to nearby gridlines (takes priority over regular grid snap); works with all element types during creation
