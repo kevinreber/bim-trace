@@ -952,6 +952,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [clearGhost],
   );
 
+  // ── Ortho constraint (Shift = axis-lock) ───────────────────
+
+  /** When Shift is held and a start point exists, constrain the hit to
+   *  the nearest axis (horizontal or vertical) relative to the start. */
+  const applyOrthoConstraint = useCallback(
+    (hit: THREE.Vector3, shiftKey: boolean): void => {
+      const start = pendingStartRef.current;
+      if (!start || !shiftKey) return;
+      const adx = Math.abs(hit.x - start.x);
+      const adz = Math.abs(hit.z - start.z);
+      if (adx >= adz) {
+        // Constrain to horizontal (same Z as start)
+        hit.z = start.z;
+      } else {
+        // Constrain to vertical (same X as start)
+        hit.x = start.x;
+      }
+    },
+    [],
+  );
+
   // ── Mouse move for ghost + snap indicator ──────────────────
 
   const handleMouseMove = useCallback(
@@ -967,6 +988,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       const hit = raycastGround(e);
       if (!hit) return;
+
+      // Ortho constraint: Shift locks to horizontal or vertical
+      applyOrthoConstraint(hit, e.shiftKey);
 
       // For gridline tool, just show snap indicator and ghost (no wall snap)
       if (tool === "gridline") {
@@ -1006,7 +1030,13 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       updateGhostPreview(hit);
     },
-    [raycastGround, raycastWalls, updateGhostPreview, clearGhost],
+    [
+      raycastGround,
+      raycastWalls,
+      updateGhostPreview,
+      clearGhost,
+      applyOrthoConstraint,
+    ],
   );
 
   // ── Box select handlers ─────────────────────────────────────
@@ -1296,6 +1326,9 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         const hit = raycastGround(e);
         if (!hit) return;
 
+        // Ortho constraint: Shift locks to horizontal or vertical
+        applyOrthoConstraint(hit, e.shiftKey);
+
         const point = { x: hit.x, z: hit.z };
         const params = defaultParamsRef.current;
         // Gridline creation (two-click, not a BIM element)
@@ -1454,6 +1487,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       raycastGround,
       raycastWalls,
       clearGhost,
+      applyOrthoConstraint,
     ],
   );
 
@@ -1617,7 +1651,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           {creationTool === "gridline" ? (
             pendingStartRef.current ? (
               <span>
-                Click to set gridline end point &middot; Esc to cancel
+                Click to set gridline end point &middot; Shift = ortho
+                &middot; Esc to cancel
               </span>
             ) : (
               <span>Click to set gridline start point</span>
@@ -1634,7 +1669,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             creationTool === "pipe" ? (
             pendingStartRef.current ? (
               <span>
-                Click to set end point &middot; Esc to cancel
+                Click to set end point &middot; Shift = ortho &middot; Esc
+                to cancel
                 {creationTool === "wall" && gridLines.length > 0
                   ? ` · Tab = Align (${wallAlignMode})`
                   : ""}

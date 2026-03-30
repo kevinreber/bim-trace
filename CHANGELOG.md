@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Snap to gridlines** — when snap is enabled, elements automatically snap to nearby gridlines (takes priority over regular grid snap); works with all element types during creation
 - **Wall alignment mode** — press Tab during wall creation to cycle alignment (left / center / right) relative to gridlines; offsets the wall by half its thickness so the chosen face aligns with the gridline
 - **Gridline persistence** — gridlines are saved/restored with auto-save and project export/import
+- **Ortho constraint (Shift)** — hold Shift during two-click placement (walls, gridlines, beams, etc.) to constrain the line to be perfectly horizontal or vertical based on the dominant direction
 
 ### Added
 - **Multi-select** — Ctrl+click to add/remove elements from selection; box/marquee select by click-dragging in the 3D viewport to select all elements within the rectangle; multi-select highlights all selected elements in the Project Browser tree and shows a selection summary with type counts in the Properties panel
