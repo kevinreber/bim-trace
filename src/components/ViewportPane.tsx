@@ -3,6 +3,7 @@ import type {
   AnnotationTool,
   BimElement,
   CreationTool,
+  GridLine,
   GridSize,
   Markup,
   SelectedElement,
@@ -10,6 +11,7 @@ import type {
   Viewer3DHandle,
   ViewPane,
   ViewPaneType,
+  WallAlignMode,
 } from "@/types";
 import { CAMERA_PRESETS, DEFAULT_PARAMS } from "@/types";
 import AnnotationLayer from "./AnnotationLayer";
@@ -34,6 +36,9 @@ interface ViewportPaneProps {
   selectedElementIds: string[];
   snapEnabled: boolean;
   gridSize: GridSize;
+  gridLines: GridLine[];
+  onGridLineCreated: (gl: GridLine) => void;
+  wallAlignMode: WallAlignMode;
   // 2D PDF props
   pdfCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
   onPageChange: (page: number, total: number) => void;
@@ -129,6 +134,9 @@ export default function ViewportPane({
   selectedElementIds,
   snapEnabled,
   gridSize,
+  gridLines,
+  onGridLineCreated,
+  wallAlignMode,
   pdfCanvasRef,
   onPageChange,
   hasPdf,
@@ -198,6 +206,9 @@ export default function ViewportPane({
             defaultParams={DEFAULT_PARAMS}
             snapEnabled={snapEnabled}
             gridSize={gridSize}
+            gridLines={gridLines}
+            onGridLineCreated={onGridLineCreated}
+            wallAlignMode={wallAlignMode}
             cameraPreset={cameraPreset}
           />
         ) : (

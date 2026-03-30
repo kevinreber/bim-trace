@@ -80,7 +80,7 @@ export type BimElementType =
   | "pipe"
   | "lightFixture";
 
-export type CreationTool = "none" | BimElementType;
+export type CreationTool = "none" | BimElementType | "gridline";
 
 export interface BimElementParams {
   wall: { height: number; thickness: number };
@@ -255,6 +255,17 @@ export const CAMERA_PRESETS: Record<string, CameraPreset> = {
     orthographic: true,
   },
 };
+
+// ── Gridlines (user-created reference lines) ────────────────
+
+export interface GridLine {
+  id: string;
+  label: string;
+  start: { x: number; z: number };
+  end: { x: number; z: number };
+}
+
+export type WallAlignMode = "left" | "center" | "right";
 
 // ── Snap & Grid ──────────────────────────────────────────────
 

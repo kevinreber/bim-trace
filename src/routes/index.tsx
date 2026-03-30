@@ -15,6 +15,7 @@ import type {
   AnnotationTool,
   BimElement,
   CreationTool,
+  GridLine,
   GridSize,
   Level,
   Markup,
@@ -25,6 +26,7 @@ import type {
   ViewLayout,
   ViewPane,
   ViewPaneType,
+  WallAlignMode,
 } from "@/types";
 import { DEFAULT_LEVELS, DEFAULT_PANES, VIEW_PANE_LABELS } from "@/types";
 
@@ -65,6 +67,10 @@ function Home() {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [gridSize, setGridSize] = useState<GridSize>(0.5);
 
+  // Gridlines (user-created reference lines)
+  const [gridLines, setGridLines] = useState<GridLine[]>([]);
+  const [wallAlignMode, setWallAlignMode] = useState<WallAlignMode>("center");
+
   // Level management
   const [levels, setLevels] = useState<Level[]>(DEFAULT_LEVELS);
   const [activeLevel, setActiveLevel] = useState<string>("ground");
@@ -98,6 +104,7 @@ function Home() {
           setMarkups(data.markups);
           setLevels(data.levels);
           setActiveLevel(data.activeLevel);
+          if (data.gridLines) setGridLines(data.gridLines);
           showToast("Project restored from auto-save", "info");
         }
       })
@@ -118,13 +125,14 @@ function Home() {
         markups,
         levels,
         activeLevel,
+        gridLines,
         savedAt: Date.now(),
       }).catch(() => {});
     }, 1000);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [bimElements, markups, levels, activeLevel, projectLoaded]);
+  }, [bimElements, markups, levels, activeLevel, gridLines, projectLoaded]);
 
   // ── Persistence: export/import/new project ──────────────────
   const handleExportProject = useCallback(() => {
@@ -133,11 +141,12 @@ function Home() {
       markups,
       levels,
       activeLevel,
+      gridLines,
       savedAt: Date.now(),
     };
     exportProjectJSON(data);
     showToast("Project exported", "success");
-  }, [bimElements, markups, levels, activeLevel, showToast]);
+  }, [bimElements, markups, levels, activeLevel, gridLines, showToast]);
 
   const handleImportProject = useCallback(() => {
     const input = document.createElement("input");
@@ -152,6 +161,7 @@ function Home() {
         setMarkups(data.markups);
         setLevels(data.levels);
         setActiveLevel(data.activeLevel);
+        setGridLines(data.gridLines ?? []);
         undoStackRef.current = [];
         redoStackRef.current = [];
         showToast("Project imported", "success");
@@ -167,6 +177,7 @@ function Home() {
     setMarkups([]);
     setLevels(DEFAULT_LEVELS);
     setActiveLevel("ground");
+    setGridLines([]);
     setSelectedElement(null);
     setSelectedElementIds([]);
     undoStackRef.current = [];
@@ -426,6 +437,15 @@ function Home() {
     setSelectedElementIds([]);
   }, [selectedElementIds, showToast]);
 
+  // Gridline handlers
+  const handleGridLineCreated = useCallback(
+    (gl: GridLine) => {
+      setGridLines((prev) => [...prev, gl]);
+      showToast(`Created gridline: ${gl.label}`, "success");
+    },
+    [showToast],
+  );
+
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
     const action = undoStackRef.current.pop();
@@ -606,6 +626,15 @@ function Home() {
         return;
       }
 
+      // Tab — cycle wall alignment mode (left / center / right)
+      if (e.key === "Tab" && creationTool === "wall") {
+        e.preventDefault();
+        setWallAlignMode((prev) =>
+          prev === "center" ? "left" : prev === "left" ? "right" : "center",
+        );
+        return;
+      }
+
       // Escape — deselect tool and clear selection
       if (e.key === "Escape") {
         setCreationTool("none");
@@ -662,6 +691,7 @@ function Home() {
     bimElements,
     snapEnabled,
     gridSize,
+    creationTool,
   ]);
 
   const activeLevelName =
@@ -762,6 +792,9 @@ function Home() {
                   selectedElementIds={selectedElementIds}
                   snapEnabled={snapEnabled}
                   gridSize={gridSize}
+                  gridLines={gridLines}
+                  onGridLineCreated={handleGridLineCreated}
+                  wallAlignMode={wallAlignMode}
                   pdfCanvasRef={
                     pane.type === "2d-sheet" ? pdfCanvasRef : undefined
                   }
@@ -818,6 +851,19 @@ function Home() {
               Snap: {gridSize}m
             </span>
           )}
+          {creationTool === "wall" && gridLines.length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot amber" />
+              Align: {wallAlignMode} (Tab)
+            </span>
+          )}
+          {gridLines.length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot" style={{ background: "#06b6d4" }} />
+              {gridLines.length} gridline
+              {gridLines.length !== 1 ? "s" : ""}
+            </span>
+          )}
           <span className="status-indicator">
             <span className="status-dot blue" />
             Level: {activeLevelName} ({activeLevelHeight}m)
@@ -836,7 +882,8 @@ function Home() {
             </span>
           )}
           <span style={{ color: "var(--text-muted)" }}>
-            Shift+Key = Create | G = Snap | Ctrl+Click = Multi-select
+            Shift+Key = Create | G = Snap | Tab = Align | Ctrl+Click =
+            Multi-select
           </span>
         </div>
       </div>
