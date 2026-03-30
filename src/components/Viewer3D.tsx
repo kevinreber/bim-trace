@@ -50,10 +50,14 @@ import {
 
 interface Viewer3DProps {
   onModelLoaded: (tree: SpatialNode[]) => void;
-  onElementSelected: (element: SelectedElement | null) => void;
+  onElementSelected: (
+    element: SelectedElement | null,
+    ctrlKey?: boolean,
+  ) => void;
   creationTool: CreationTool;
   onElementCreated: (element: BimElement) => void;
   bimElements: BimElement[];
+  selectedElementIds: string[];
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
@@ -104,6 +108,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     creationTool,
     onElementCreated,
     bimElements,
+    selectedElementIds,
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
@@ -152,6 +157,20 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasModel, setHasModel] = useState(false);
+
+  // Box select state
+  const boxSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [boxSelectRect, setBoxSelectRect] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const boxSelectThreshold = 5; // min pixels to start box select
+  const boxSelectUsedRef = useRef(false);
+
+  // Dimension labels
+  const dimensionLabelsRef = useRef<THREE.Sprite[]>([]);
 
   // ── Scene setup ────────────────────────────────────────────
 
@@ -218,7 +237,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   // ── Highlight helpers ──────────────────────────────────────
 
-  const highlightMesh = useCallback((mesh: THREE.Mesh | null) => {
+  const highlightMeshes = useCallback((meshes: THREE.Mesh[]) => {
     const world = worldRef.current;
     if (!world) return;
     const scene = world.scene.three;
@@ -229,13 +248,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
     highlightedRef.current = [];
 
-    if (!mesh) return;
-
     const highlightMat = highlightMatRef.current;
-    if (highlightMat) {
+    if (!highlightMat) return;
+
+    for (const mesh of meshes) {
       const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
-      // Copy transform directly — for scene-root meshes this is the
-      // full transform; for nested IFC children we decompose matrixWorld.
       if (mesh.parent && mesh.parent !== scene) {
         // Nested mesh (IFC model child) — decompose world matrix
         mesh.updateWorldMatrix(true, false);
@@ -257,6 +274,151 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       highlightedRef.current.push(highlight);
     }
   }, []);
+
+  const highlightMesh = useCallback(
+    (mesh: THREE.Mesh | null) => {
+      highlightMeshes(mesh ? [mesh] : []);
+    },
+    [highlightMeshes],
+  );
+
+  // ── Dimension labels ──────────────────────────────────────
+
+  const clearDimensionLabels = useCallback(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    for (const sprite of dimensionLabelsRef.current) {
+      world.scene.three.remove(sprite);
+      (sprite.material as THREE.SpriteMaterial).map?.dispose();
+      (sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    dimensionLabelsRef.current = [];
+  }, []);
+
+  const createTextSprite = useCallback(
+    (text: string, position: THREE.Vector3): THREE.Sprite => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const fontSize = 28;
+      const padding = 8;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      const metrics = ctx.measureText(text);
+      const textWidth = metrics.width;
+      canvas.width = textWidth + padding * 2;
+      canvas.height = fontSize + padding * 2;
+
+      // Background
+      ctx.fillStyle = "rgba(30, 41, 59, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(0, 0, canvas.width, canvas.height, 4);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.6)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Text
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = "#93c5fd";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.position.copy(position);
+      // Scale sprite to reasonable world-space size
+      const aspect = canvas.width / canvas.height;
+      sprite.scale.set(aspect * 0.4, 0.4, 1);
+      sprite.renderOrder = 1001;
+      return sprite;
+    },
+    [],
+  );
+
+  const updateDimensionLabels = useCallback(
+    (elementIds: string[]) => {
+      clearDimensionLabels();
+      const world = worldRef.current;
+      if (!world || elementIds.length === 0) return;
+
+      for (const id of elementIds) {
+        const el = bimElements.find((e) => e.id === id);
+        const mesh = authoredMeshesRef.current.get(id);
+        if (!el || !mesh) continue;
+
+        const box = new THREE.Box3().setFromObject(mesh);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        // Build dimension text based on element type
+        const labels: { text: string; pos: THREE.Vector3 }[] = [];
+        const params = el.params as Record<string, number>;
+
+        if (
+          el.type === "wall" ||
+          el.type === "beam" ||
+          el.type === "duct" ||
+          el.type === "pipe" ||
+          el.type === "railing" ||
+          el.type === "curtainWall"
+        ) {
+          // Linear elements: show length
+          const dx = el.end.x - el.start.x;
+          const dz = el.end.z - el.start.z;
+          const length = Math.sqrt(dx * dx + dz * dz);
+          labels.push({
+            text: `L: ${length.toFixed(2)}m`,
+            pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+          });
+          if (params.height) {
+            labels.push({
+              text: `H: ${params.height.toFixed(2)}m`,
+              pos: new THREE.Vector3(box.max.x + 0.3, center.y, center.z),
+            });
+          }
+        } else if (
+          el.type === "slab" ||
+          el.type === "ceiling" ||
+          el.type === "roof"
+        ) {
+          // Area elements: show width x depth
+          labels.push({
+            text: `${size.x.toFixed(2)} x ${size.z.toFixed(2)}m`,
+            pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+          });
+        } else {
+          // Single-click elements: show key dimensions above
+          const dimParts: string[] = [];
+          if (params.height) dimParts.push(`H:${params.height.toFixed(2)}`);
+          if (params.width) dimParts.push(`W:${params.width.toFixed(2)}`);
+          if (params.depth) dimParts.push(`D:${params.depth.toFixed(2)}`);
+          if (params.radius) dimParts.push(`R:${params.radius.toFixed(2)}`);
+          if (params.diameter) dimParts.push(`D:${params.diameter.toFixed(2)}`);
+          if (dimParts.length > 0) {
+            labels.push({
+              text: `${dimParts.join(" ")}m`,
+              pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+            });
+          }
+        }
+
+        for (const label of labels) {
+          const sprite = createTextSprite(label.text, label.pos);
+          world.scene.three.add(sprite);
+          dimensionLabelsRef.current.push(sprite);
+        }
+      }
+    },
+    [bimElements, clearDimensionLabels, createTextSprite],
+  );
 
   const flyToMesh = useCallback((mesh: THREE.Mesh) => {
     const world = worldRef.current;
@@ -286,20 +448,10 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           meshMapRef.current.get(globalId) ??
           authoredMeshesRef.current.get(globalId);
         if (!mesh) return;
-        highlightMesh(mesh);
         flyToMesh(mesh);
-
-        const element: SelectedElement = {
-          expressID: (mesh.userData.expressID as number) || 0,
-          globalId,
-          type: (mesh.userData.type as string) || mesh.name || "Element",
-          name: mesh.name || `Element #${mesh.id}`,
-          properties: extractProperties(mesh),
-        };
-        onElementSelected(element);
       },
     }),
-    [highlightMesh, flyToMesh, onElementSelected],
+    [flyToMesh],
   );
 
   const rebuildMeshMap = useCallback(() => {
@@ -707,6 +859,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         if (snapIndicatorRef.current) snapIndicatorRef.current.visible = false;
         clearGhost();
         doorSnapRef.current = null;
+        handleMouseMoveBoxSelect(e);
         return;
       }
 
@@ -742,6 +895,101 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       updateGhostPreview(hit);
     },
     [raycastGround, raycastWalls, updateGhostPreview, clearGhost],
+  );
+
+  // ── Box select handlers ─────────────────────────────────────
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (creationToolRef.current !== "none") return;
+    if (e.button !== 0) return; // left button only
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    boxSelectStartRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
+
+  const handleMouseMoveBoxSelect = useCallback((e: React.MouseEvent) => {
+    const start = boxSelectStartRef.current;
+    if (!start) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const dx = Math.abs(cx - start.x);
+    const dy = Math.abs(cy - start.y);
+    if (dx > boxSelectThreshold || dy > boxSelectThreshold) {
+      setBoxSelectRect({
+        x: Math.min(start.x, cx),
+        y: Math.min(start.y, cy),
+        width: Math.abs(cx - start.x),
+        height: Math.abs(cy - start.y),
+      });
+    }
+  }, []);
+
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      const start = boxSelectStartRef.current;
+      boxSelectStartRef.current = null;
+
+      if (!boxSelectRect) return;
+      setBoxSelectRect(null);
+      boxSelectUsedRef.current = true;
+
+      // Box select: find all authored elements whose center projects inside the box
+      const world = worldRef.current;
+      const container = containerRef.current;
+      if (!world || !container || !start) return;
+
+      const rect = container.getBoundingClientRect();
+      const camera = world.camera.three;
+      const w = rect.width;
+      const h = rect.height;
+
+      // Normalized box bounds (-1 to 1)
+      const bx = boxSelectRect.x;
+      const by = boxSelectRect.y;
+      const bw = boxSelectRect.width;
+      const bh = boxSelectRect.height;
+
+      const selected: SelectedElement[] = [];
+      for (const [id, mesh] of Array.from(
+        authoredMeshesRef.current.entries(),
+      )) {
+        const pos = new THREE.Vector3();
+        mesh.getWorldPosition(pos);
+        pos.project(camera);
+        // Convert to pixel coordinates
+        const sx = (pos.x * 0.5 + 0.5) * w;
+        const sy = (-pos.y * 0.5 + 0.5) * h;
+        if (sx >= bx && sx <= bx + bw && sy >= by && sy <= by + bh) {
+          selected.push({
+            expressID: 0,
+            globalId: id,
+            type: (mesh.userData.type as string) || mesh.name || "Element",
+            name: mesh.name || `Element #${mesh.id}`,
+            properties: extractProperties(mesh),
+          });
+        }
+      }
+
+      if (selected.length > 0) {
+        // Select the last one as primary, but also set all via onElementSelected
+        const ctrlKey = e.ctrlKey || e.metaKey;
+        // For box select, we report each element to build the full selection
+        // We use a batch approach: first element resets (unless ctrl), rest add
+        for (let i = 0; i < selected.length; i++) {
+          onElementSelected(selected[i], ctrlKey || i > 0);
+        }
+      } else if (!e.ctrlKey && !e.metaKey) {
+        onElementSelected(null);
+      }
+    },
+    [boxSelectRect, onElementSelected],
   );
 
   // ── Sync authored BimElements → scene ──────────────────────
@@ -789,6 +1037,12 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      // Skip if box select just completed
+      if (boxSelectUsedRef.current) {
+        boxSelectUsedRef.current = false;
+        return;
+      }
+
       const world = worldRef.current;
       if (!world) return;
 
@@ -898,8 +1152,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       const intersects = raycaster.intersectObjects(meshes, false);
 
-      highlightMesh(null);
-
       if (intersects.length > 0) {
         // Prefer doors/windows over their host wall when both are hit
         // at a similar distance (door is inside the wall geometry).
@@ -907,7 +1159,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         const bestDist = intersects[0].distance;
         for (let i = 1; i < intersects.length; i++) {
           const hit = intersects[i];
-          // Only consider hits within a small tolerance of the closest hit
           if (hit.distance - bestDist > 0.3) break;
           const type = (hit.object as THREE.Mesh).userData.type as
             | string
@@ -918,7 +1169,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           }
         }
         const mesh = intersects[bestIdx].object as THREE.Mesh;
-        highlightMesh(mesh);
 
         const globalId =
           (mesh.userData.bimElementId as string) || buildGlobalId(mesh);
@@ -929,7 +1179,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           name: mesh.name || `Element #${mesh.id}`,
           properties: extractProperties(mesh),
         };
-        onElementSelected(element);
+        onElementSelected(element, e.ctrlKey || e.metaKey);
       } else {
         onElementSelected(null);
       }
@@ -937,12 +1187,25 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [
       onElementSelected,
       onElementCreated,
-      highlightMesh,
       raycastGround,
       raycastWalls,
       clearGhost,
     ],
   );
+
+  // ── Sync multi-select highlights + dimension labels ─────────
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedElementIds triggers highlight sync
+  useEffect(() => {
+    const meshes: THREE.Mesh[] = [];
+    for (const id of selectedElementIds) {
+      const mesh =
+        authoredMeshesRef.current.get(id) ?? meshMapRef.current.get(id);
+      if (mesh) meshes.push(mesh);
+    }
+    highlightMeshes(meshes);
+    updateDimensionLabels(selectedElementIds);
+  }, [selectedElementIds, bimElements, highlightMeshes, updateDimensionLabels]);
 
   // ── Clear pending start when tool changes ──────────────────
 
@@ -1053,12 +1316,16 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           pendingStartRef.current = null;
           clearGhost();
+          boxSelectStartRef.current = null;
+          setBoxSelectRect(null);
           onElementSelected(null);
         }
       }}
@@ -1104,6 +1371,21 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             <span>Click to place {creationTool}</span>
           )}
         </div>
+      )}
+
+      {/* Box select rectangle overlay */}
+      {boxSelectRect && (
+        <div
+          className="absolute pointer-events-none z-20"
+          style={{
+            left: boxSelectRect.x,
+            top: boxSelectRect.y,
+            width: boxSelectRect.width,
+            height: boxSelectRect.height,
+            border: "1px dashed rgba(59, 130, 246, 0.8)",
+            background: "rgba(59, 130, 246, 0.1)",
+          }}
+        />
       )}
 
       {!hasModel && !loading && bimElements.length === 0 && (

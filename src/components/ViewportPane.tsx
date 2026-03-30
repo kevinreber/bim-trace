@@ -24,10 +24,14 @@ interface ViewportPaneProps {
   // 3D viewer props
   viewer3DRef?: React.Ref<Viewer3DHandle>;
   onModelLoaded: (tree: SpatialNode[]) => void;
-  onElementSelected: (element: SelectedElement | null) => void;
+  onElementSelected: (
+    element: SelectedElement | null,
+    ctrlKey?: boolean,
+  ) => void;
   creationTool: CreationTool;
   onElementCreated: (element: BimElement) => void;
   bimElements: BimElement[];
+  selectedElementIds: string[];
   snapEnabled: boolean;
   gridSize: GridSize;
   // 2D PDF props
@@ -122,6 +126,7 @@ export default function ViewportPane({
   creationTool,
   onElementCreated,
   bimElements,
+  selectedElementIds,
   snapEnabled,
   gridSize,
   pdfCanvasRef,
@@ -189,6 +194,7 @@ export default function ViewportPane({
             creationTool={creationTool}
             onElementCreated={onElementCreated}
             bimElements={bimElements}
+            selectedElementIds={selectedElementIds}
             defaultParams={DEFAULT_PARAMS}
             snapEnabled={snapEnabled}
             gridSize={gridSize}

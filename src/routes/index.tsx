@@ -42,6 +42,8 @@ function Home() {
   const [tree, setTree] = useState<SpatialNode[]>([]);
   const [selectedElement, setSelectedElement] =
     useState<SelectedElement | null>(null);
+  // Multi-select: tracks all selected element IDs (authored BIM elements)
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [markups, setMarkups] = useState<Markup[]>([]);
   const [activeTool, setActiveTool] = useState<AnnotationTool>("select");
   const [viewPanes, setViewPanes] = useState<ViewPane[]>(DEFAULT_PANES);
@@ -166,6 +168,7 @@ function Home() {
     setLevels(DEFAULT_LEVELS);
     setActiveLevel("ground");
     setSelectedElement(null);
+    setSelectedElementIds([]);
     undoStackRef.current = [];
     redoStackRef.current = [];
     clearProject().catch(() => {});
@@ -177,8 +180,25 @@ function Home() {
   }, []);
 
   const handleElementSelected = useCallback(
-    (element: SelectedElement | null) => {
+    (element: SelectedElement | null, ctrlKey = false) => {
+      if (!element) {
+        // Deselect all
+        setSelectedElement(null);
+        setSelectedElementIds([]);
+        return;
+      }
       setSelectedElement(element);
+      if (ctrlKey) {
+        // Toggle element in/out of multi-selection
+        setSelectedElementIds((prev) =>
+          prev.includes(element.globalId)
+            ? prev.filter((id) => id !== element.globalId)
+            : [...prev, element.globalId],
+        );
+      } else {
+        // Replace selection with single element
+        setSelectedElementIds([element.globalId]);
+      }
     },
     [],
   );
@@ -221,7 +241,6 @@ function Home() {
     (elementId: string) => {
       const el = bimElements.find((e) => e.id === elementId);
       if (!el) return;
-      // Set as selected element so Properties panel shows it
       setSelectedElement({
         expressID: 0,
         globalId: el.id,
@@ -229,7 +248,7 @@ function Home() {
         name: el.name,
         properties: el.params as Record<string, string | number | boolean>,
       });
-      // Fly to it in the 3D view
+      setSelectedElementIds([el.id]);
       viewer3DRef.current?.flyToElement(el.id);
     },
     [bimElements],
@@ -383,9 +402,29 @@ function Home() {
         return prev.filter((e) => e.id !== id);
       });
       setSelectedElement((prev) => (prev?.globalId === id ? null : prev));
+      setSelectedElementIds((prev) => prev.filter((eid) => eid !== id));
     },
     [showToast],
   );
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedElementIds.length === 0) return;
+    setBimElements((prev) => {
+      const idsToDelete = new Set(selectedElementIds);
+      const deleted = prev.filter((e) => idsToDelete.has(e.id));
+      for (const el of deleted) {
+        undoStackRef.current.push({ type: "delete", element: el });
+      }
+      redoStackRef.current = [];
+      showToast(
+        `Deleted ${deleted.length} element${deleted.length !== 1 ? "s" : ""}`,
+        "info",
+      );
+      return prev.filter((e) => !idsToDelete.has(e.id));
+    });
+    setSelectedElement(null);
+    setSelectedElementIds([]);
+  }, [selectedElementIds, showToast]);
 
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
@@ -499,9 +538,12 @@ function Home() {
         return;
       }
 
-      // Delete selected element
+      // Delete selected element(s)
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedElement) {
+        if (selectedElementIds.length > 1) {
+          e.preventDefault();
+          handleBulkDelete();
+        } else if (selectedElement) {
           const bimEl = bimElements.find(
             (el) => el.id === selectedElement.globalId,
           );
@@ -513,28 +555,29 @@ function Home() {
         return;
       }
 
-      // Arrow keys to move selected element
-      if (selectedElement && !e.shiftKey) {
-        const bimEl = bimElements.find(
-          (el) => el.id === selectedElement.globalId,
-        );
-        const step = snapEnabled ? gridSize : 0.5;
+      // Arrow keys to move selected element(s)
+      if (selectedElementIds.length > 0 && !e.shiftKey) {
         if (
-          bimEl &&
-          (e.key === "ArrowLeft" ||
-            e.key === "ArrowRight" ||
-            e.key === "ArrowUp" ||
-            e.key === "ArrowDown")
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown"
         ) {
-          e.preventDefault();
+          const step = snapEnabled ? gridSize : 0.5;
           const dx =
             e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
           const dz =
             e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-          handleBimElementUpdate(bimEl.id, {
-            start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
-            end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
-          });
+          e.preventDefault();
+          for (const id of selectedElementIds) {
+            const bimEl = bimElements.find((el) => el.id === id);
+            if (bimEl) {
+              handleBimElementUpdate(bimEl.id, {
+                start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
+                end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
+              });
+            }
+          }
           return;
         }
       }
@@ -563,10 +606,12 @@ function Home() {
         return;
       }
 
-      // Escape — deselect tool
+      // Escape — deselect tool and clear selection
       if (e.key === "Escape") {
         setCreationTool("none");
         setActiveTool("select");
+        setSelectedElement(null);
+        setSelectedElementIds([]);
         return;
       }
 
@@ -609,9 +654,11 @@ function Home() {
     handleUndo,
     handleRedo,
     handleBimElementDelete,
+    handleBulkDelete,
     handleBimElementUpdate,
     handleSetLayout,
     selectedElement,
+    selectedElementIds,
     bimElements,
     snapEnabled,
     gridSize,
@@ -659,6 +706,7 @@ function Home() {
             bimElements={bimElements}
             markups={markups}
             selectedElement={selectedElement}
+            selectedElementIds={selectedElementIds}
             onSelectElement={handleSelectElement}
             onMarkupStatusChange={handleMarkupStatusChange}
             onMarkupNavigate={handleMarkupNavigate}
@@ -711,6 +759,7 @@ function Home() {
                   creationTool={creationTool}
                   onElementCreated={handleElementCreated}
                   bimElements={bimElements}
+                  selectedElementIds={selectedElementIds}
                   snapEnabled={snapEnabled}
                   gridSize={gridSize}
                   pdfCanvasRef={
@@ -732,10 +781,12 @@ function Home() {
         <div className="w-72 shrink-0">
           <PropertiesPanel
             selectedElement={selectedElement}
+            selectedElementIds={selectedElementIds}
             bimElements={bimElements}
             markups={markups}
             onBimElementUpdate={handleBimElementUpdate}
             onBimElementDelete={handleBimElementDelete}
+            onBulkDelete={handleBulkDelete}
             onMarkupStatusChange={handleMarkupStatusChange}
             onMarkupNavigate={handleMarkupNavigate}
             onMarkupLink={handleMarkupLink}
@@ -778,8 +829,14 @@ function Home() {
             </span>
           )}
           {hasPdf && <span>Page {currentPage}</span>}
+          {selectedElementIds.length > 1 && (
+            <span className="status-indicator">
+              <span className="status-dot blue" />
+              {selectedElementIds.length} selected
+            </span>
+          )}
           <span style={{ color: "var(--text-muted)" }}>
-            Shift+Key = Create | G = Snap | 1-4 = Layout
+            Shift+Key = Create | G = Snap | Ctrl+Click = Multi-select
           </span>
         </div>
       </div>
