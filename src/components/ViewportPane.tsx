@@ -56,6 +56,7 @@ const VIEW_TYPE_OPTIONS: { value: ViewPaneType; label: string }[] = [
   { value: "back-elevation", label: "Back Elevation" },
   { value: "left-elevation", label: "Left Elevation" },
   { value: "right-elevation", label: "Right Elevation" },
+  { value: "section", label: "Section" },
   { value: "2d-sheet", label: "2D Sheet" },
 ];
 
@@ -88,6 +89,21 @@ function PaneIcon({ type }: { type: ViewPaneType }) {
         <line x1="3" y1="12" x2="21" y2="12" />
         <line x1="12" y1="3" x2="12" y2="21" />
         <circle cx="12" cy="12" r="2" />
+      </svg>
+    );
+  }
+  if (type === "section") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-3 h-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <rect x="3" y="3" width="18" height="18" rx="1" />
+        <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="3 2" />
+        <path d="M12 8 L14 12 L12 16" />
       </svg>
     );
   }

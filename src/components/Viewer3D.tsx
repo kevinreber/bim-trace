@@ -128,7 +128,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   const componentsRef = useRef<OBC.Components | null>(null);
   const worldRef = useRef<OBC.SimpleWorld<
     OBC.SimpleScene,
-    OBC.SimpleCamera,
+    OBC.OrthoPerspectiveCamera,
     OBC.SimpleRenderer
   > | null>(null);
   const modelRef = useRef<unknown>(null);
@@ -202,14 +202,14 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     const worlds = components.get(OBC.Worlds);
     const world = worlds.create<
       OBC.SimpleScene,
-      OBC.SimpleCamera,
+      OBC.OrthoPerspectiveCamera,
       OBC.SimpleRenderer
     >();
     worldRef.current = world;
 
     world.scene = new OBC.SimpleScene(components);
     world.renderer = new OBC.SimpleRenderer(components, container);
-    world.camera = new OBC.SimpleCamera(components);
+    world.camera = new OBC.OrthoPerspectiveCamera(components);
 
     components.init();
 
@@ -217,13 +217,37 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const [px, py, pz] = cameraPreset.position;
       const [tx, ty, tz] = cameraPreset.target;
       world.camera.controls.setLookAt(px, py, pz, tx, ty, tz);
+
+      // Switch to orthographic projection & Plan navigation for 2D views
+      if (cameraPreset.orthographic) {
+        world.camera.projection.set("Orthographic");
+        world.camera.set("Plan");
+      }
     } else {
       world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
     }
     world.scene.setup();
 
     const grids = components.get(OBC.Grids);
-    grids.create(world);
+    const grid = grids.create(world);
+
+    // Disable grid fade for orthographic cameras (looks better)
+    if (cameraPreset?.orthographic) {
+      grid.fade = false;
+    }
+
+    // Set up section clipping plane if preset defines one
+    if (cameraPreset?.sectionPlane) {
+      const clipper = components.get(OBC.Clipper);
+      clipper.enabled = true;
+      const { normal, point } = cameraPreset.sectionPlane;
+      clipper.createFromNormalAndCoplanarPoint(
+        world,
+        new THREE.Vector3(normal[0], normal[1], normal[2]),
+        new THREE.Vector3(point[0], point[1], point[2]),
+      );
+      clipper.visible = false; // hide the plane helper
+    }
 
     world.scene.three.background = new THREE.Color(0x0f172a);
 
@@ -1651,8 +1675,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           {creationTool === "gridline" ? (
             pendingStartRef.current ? (
               <span>
-                Click to set gridline end point &middot; Shift = ortho
-                &middot; Esc to cancel
+                Click to set gridline end point &middot; Shift = ortho &middot;
+                Esc to cancel
               </span>
             ) : (
               <span>Click to set gridline start point</span>
@@ -1669,8 +1693,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             creationTool === "pipe" ? (
             pendingStartRef.current ? (
               <span>
-                Click to set end point &middot; Shift = ortho &middot; Esc
-                to cancel
+                Click to set end point &middot; Shift = ortho &middot; Esc to
+                cancel
                 {creationTool === "wall" && gridLines.length > 0
                   ? ` · Tab = Align (${wallAlignMode})`
                   : ""}

@@ -1293,6 +1293,32 @@ export default function RibbonToolbar({
                 </button>
                 <button
                   type="button"
+                  onClick={() => onAddPane("section")}
+                  className="ribbon-tool-btn"
+                  title="Add Section View"
+                  disabled={viewPanes.length >= 4}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="1" />
+                    <line
+                      x1="3"
+                      y1="12"
+                      x2="21"
+                      y2="12"
+                      strokeDasharray="3 2"
+                    />
+                    <path d="M12 8 L14 12 L12 16" />
+                  </svg>
+                  <span className="ribbon-tool-label">Section</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => onAddPane("2d-sheet")}
                   className="ribbon-tool-btn"
                   title="Add 2D Sheet"
