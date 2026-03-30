@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import type { BimElement, BimElementType } from "@/types";
+import type { BimElement, BimElementType, BimMaterialType } from "@/types";
+import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
 
 // ── Materials ──────────────────────────────────────────────────
 
@@ -74,6 +75,66 @@ export const ELEMENT_MATERIALS: Record<
     metalness: 0.2,
   }),
 };
+
+// ── Material Library ──────────────────────────────────────────
+
+export const MATERIAL_LIBRARY: Record<
+  BimMaterialType,
+  THREE.MeshStandardMaterial
+> = {
+  concrete: new THREE.MeshStandardMaterial({
+    color: 0xbab5ab,
+    roughness: 0.9,
+    metalness: 0.0,
+  }),
+  wood: new THREE.MeshStandardMaterial({
+    color: 0x8b5e3c,
+    roughness: 0.7,
+    metalness: 0.0,
+  }),
+  steel: new THREE.MeshStandardMaterial({
+    color: 0xa0a0a0,
+    roughness: 0.35,
+    metalness: 0.7,
+  }),
+  glass: new THREE.MeshStandardMaterial({
+    color: 0x87ceeb,
+    roughness: 0.05,
+    metalness: 0.2,
+    transparent: true,
+    opacity: 0.45,
+  }),
+  brick: new THREE.MeshStandardMaterial({
+    color: 0xa0522d,
+    roughness: 0.85,
+    metalness: 0.0,
+  }),
+  stone: new THREE.MeshStandardMaterial({
+    color: 0x8e8e85,
+    roughness: 0.8,
+    metalness: 0.0,
+  }),
+  drywall: new THREE.MeshStandardMaterial({
+    color: 0xf5f5f0,
+    roughness: 0.95,
+    metalness: 0.0,
+  }),
+  aluminum: new THREE.MeshStandardMaterial({
+    color: 0xc0c0c0,
+    roughness: 0.4,
+    metalness: 0.6,
+  }),
+};
+
+/** Resolve the material for a BIM element, falling back to the type default */
+export function getMaterialForElement(
+  el: BimElement,
+): THREE.MeshStandardMaterial {
+  const matKey = el.material ?? DEFAULT_ELEMENT_MATERIAL[el.type];
+  return MATERIAL_LIBRARY[matKey];
+}
+
+// ── Ghost / Snap Materials ────────────────────────────────────
 
 export const GHOST_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0x4ade80,
