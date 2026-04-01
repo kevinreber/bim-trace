@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Elevation view projection** — All elevation views (Front, Back, Left, Right) now use orthographic projection for accurate 2D representation
 
 ### Added
+- **Material options** — elements now support per-element material assignment with 8 basic materials (Concrete, Wood, Steel, Glass, Brick, Stone, Drywall, Aluminum); editable via a dropdown in the Properties Panel's new Material section
 - **Section view** — new Section view type with a clipping plane that cuts through the model; accessible from the View ribbon tab's "Add View" group and the pane type dropdown
 - **2D navigation mode** — Plan and Elevation views now lock camera rotation, allowing only pan and zoom for a true 2D drafting experience
 

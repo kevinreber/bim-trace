@@ -58,6 +58,16 @@ export interface Viewer3DHandle {
 
 // ── BIM Authoring ──────────────────────────────────────────────
 
+export type BimMaterialType =
+  | "concrete"
+  | "wood"
+  | "steel"
+  | "glass"
+  | "brick"
+  | "stone"
+  | "drywall"
+  | "aluminum";
+
 export type BimElementType =
   | "wall"
   | "column"
@@ -131,6 +141,8 @@ export interface BimElement {
   rotation?: number;
   /** ID of the wall this element is hosted on (doors) */
   hostWallId?: string;
+  /** Optional material override; falls back to type default if omitted */
+  material?: BimMaterialType;
 }
 
 /** Default parametric values for each element type */
@@ -161,6 +173,31 @@ export const DEFAULT_PARAMS: BimElementParams = {
   pipe: { diameter: 0.1 },
   lightFixture: { width: 0.6, depth: 0.6 },
 };
+
+/** Default material for each element type (used when element.material is unset) */
+export const DEFAULT_ELEMENT_MATERIAL: Record<BimElementType, BimMaterialType> =
+  {
+    wall: "concrete",
+    column: "concrete",
+    slab: "concrete",
+    door: "wood",
+    window: "glass",
+    beam: "steel",
+    ceiling: "drywall",
+    roof: "wood",
+    stair: "concrete",
+    railing: "steel",
+    curtainWall: "glass",
+    table: "wood",
+    chair: "wood",
+    shelving: "wood",
+    desk: "wood",
+    toilet: "drywall",
+    sink: "drywall",
+    duct: "aluminum",
+    pipe: "steel",
+    lightFixture: "aluminum",
+  };
 
 // ── Undo/Redo ──────────────────────────────────────────────────
 

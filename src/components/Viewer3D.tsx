@@ -42,7 +42,7 @@ import {
   buildToiletMesh,
   buildWallMesh,
   buildWindowMesh,
-  ELEMENT_MATERIALS,
+  getMaterialForElement,
   GHOST_MATERIAL,
   INVALID_GHOST_MATERIAL,
   SNAP_INDICATOR_MAT,
@@ -1184,7 +1184,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         existing.geometry.dispose();
       }
 
-      const material = ELEMENT_MATERIALS[el.type];
+      const material = getMaterialForElement(el);
       const mesh = buildMeshForElement(el, material, bimElements);
       mesh.name = el.name;
       mesh.userData = {
