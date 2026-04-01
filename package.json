@@ -12,6 +12,7 @@
     "check": "biome check --write src"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.81.0",
     "@tanstack/react-router": "^1.168.7",
     "@thatopen/components": "^3.3.3",
     "@thatopen/fragments": "^3.3.7",

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import AiGenerateModal from "@/components/AiGenerateModal";
 import RibbonToolbar from "@/components/RibbonToolbar";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
 import ViewportPane from "@/components/ViewportPane";
@@ -69,6 +70,9 @@ function Home() {
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // AI Generate modal
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Persistence: loaded flag
   const [projectLoaded, setProjectLoaded] = useState(false);
@@ -387,6 +391,19 @@ function Home() {
     [showToast],
   );
 
+  // AI batch add handler
+  const handleAiBatchAdd = useCallback(
+    (elements: BimElement[]) => {
+      const els = elements.map((el) => ({ ...el, level: activeLevelHeight }));
+      setBimElements((prev) => [...prev, ...els]);
+      undoStackRef.current.push({ type: "batchAdd", elements: els });
+      redoStackRef.current = [];
+      showToast(`Generated ${els.length} elements from image`, "success");
+      setAiModalOpen(false);
+    },
+    [activeLevelHeight, showToast],
+  );
+
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
     const action = undoStackRef.current.pop();
@@ -408,6 +425,11 @@ function Home() {
           ),
         );
         break;
+      case "batchAdd": {
+        const ids = new Set(action.elements.map((el) => el.id));
+        setBimElements((prev) => prev.filter((el) => !ids.has(el.id)));
+        break;
+      }
       case "addMarkup":
         setMarkups((prev) => prev.filter((m) => m.id !== action.markup.id));
         break;
@@ -445,6 +467,9 @@ function Home() {
             el.id === action.id ? { ...el, ...action.after } : el,
           ),
         );
+        break;
+      case "batchAdd":
+        setBimElements((prev) => [...prev, ...action.elements]);
         break;
       case "addMarkup":
         setMarkups((prev) => [...prev, action.markup]);
@@ -648,6 +673,7 @@ function Home() {
         selectedElement={selectedElement}
         bimElements={bimElements}
         onBimElementUpdate={handleBimElementUpdate}
+        onAiGenerate={() => setAiModalOpen(true)}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
@@ -818,6 +844,11 @@ function Home() {
           ))}
         </div>
       )}
+      <AiGenerateModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onApply={handleAiBatchAdd}
+      />
     </div>
   );
 }

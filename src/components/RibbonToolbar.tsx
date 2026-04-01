@@ -49,6 +49,8 @@ interface RibbonToolbarProps {
   selectedElement: SelectedElement | null;
   bimElements: BimElement[];
   onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
+  // AI
+  onAiGenerate: () => void;
 }
 
 type RibbonTab = "architecture" | "annotate" | "view" | "modify";
@@ -613,6 +615,7 @@ export default function RibbonToolbar({
   selectedElement,
   bimElements,
   onBimElementUpdate,
+  onAiGenerate,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
 
@@ -1072,6 +1075,34 @@ export default function RibbonToolbar({
                 onToolSelect={handleCreationTool}
               />
             ))}
+            {/* AI Generation group */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={onAiGenerate}
+                  className="ribbon-tool-btn"
+                  title="Generate BIM elements from a floor plan image using AI"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                  </svg>
+                  <span className="ribbon-tool-label">Image{"\n"}to BIM</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">AI</div>
+            </div>
           </div>
         )}
 
