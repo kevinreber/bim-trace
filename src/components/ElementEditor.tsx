@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { BimElement, BimElementType } from "@/types";
+import type { BimElement, BimElementType, BimMaterialType } from "@/types";
+import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
 
 /* ------------------------------------------------------------------ */
 /*  Revit-style Property Grid for authored BIM elements                */
@@ -32,6 +33,17 @@ const TYPE_LABELS: Record<BimElementType, string> = {
   duct: "Duct",
   pipe: "Pipe",
   lightFixture: "Light Fixture",
+};
+
+const MATERIAL_LABELS: Record<BimMaterialType, string> = {
+  concrete: "Concrete",
+  wood: "Wood",
+  steel: "Steel",
+  glass: "Glass",
+  brick: "Brick",
+  stone: "Stone",
+  drywall: "Drywall",
+  aluminum: "Aluminum",
 };
 
 interface ParamField {
@@ -285,6 +297,7 @@ export default function ElementEditor({
   const [expandedSections, setExpandedSections] = useState({
     identity: true,
     dimensions: true,
+    material: true,
     constraints: true,
     location: true,
   });
@@ -411,6 +424,46 @@ export default function ElementEditor({
               </div>
             </div>
           ))}
+      </div>
+
+      {/* Material section */}
+      <div className="prop-section">
+        <button
+          type="button"
+          className="prop-section-header"
+          onClick={() => toggleSection("material")}
+        >
+          <span className="text-[8px]">
+            {expandedSections.material ? "▼" : "▶"}
+          </span>
+          Material
+        </button>
+        {expandedSections.material && (
+          <div className="prop-row">
+            <span className="prop-label">Material</span>
+            <div className="prop-value">
+              <select
+                value={
+                  element.material ?? DEFAULT_ELEMENT_MATERIAL[element.type]
+                }
+                onChange={(e) =>
+                  onUpdate(element.id, {
+                    material: e.target.value as BimMaterialType,
+                  })
+                }
+                className="prop-input"
+              >
+                {(Object.keys(MATERIAL_LABELS) as BimMaterialType[]).map(
+                  (key) => (
+                    <option key={key} value={key}>
+                      {MATERIAL_LABELS[key]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Constraints section */}

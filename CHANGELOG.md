@@ -8,12 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Plan View projection** — Plan View now uses true orthographic projection instead of perspective, making elements appear flat/2D as expected in architectural plan views
+- **Elevation view projection** — All elevation views (Front, Back, Left, Right) now use orthographic projection for accurate 2D representation
+
 ### Added
-- **Multi-select** — Ctrl+click (Cmd+click on Mac) to select multiple elements in the 3D viewport; selection state shown in status bar
-- **Bulk delete** — delete all selected elements at once with Delete/Backspace key or the "Delete (N)" button in the Modify ribbon tab; fully undoable
-- **Dimension labels** — selected elements display floating dimension labels (W x H x D) above them in the 3D viewport using canvas-rendered sprites
+- **Material options** — elements now support per-element material assignment with 8 basic materials (Concrete, Wood, Steel, Glass, Brick, Stone, Drywall, Aluminum); editable via a dropdown in the Properties Panel's new Material section
+- **Section view** — new Section view type with a clipping plane that cuts through the model; accessible from the View ribbon tab's "Add View" group and the pane type dropdown
+- **2D navigation mode** — Plan and Elevation views now lock camera rotation, allowing only pan and zoom for a true 2D drafting experience
+
+### Changed
+- **Camera system** — upgraded from SimpleCamera to OrthoPerspectiveCamera for proper orthographic/perspective switching and navigation mode support
+- **Grid rendering** — grid fade effect is disabled in orthographic views for cleaner appearance
+
+### Added
+- **Gridlines** — user-created reference lines for design alignment; two-click placement via the Architecture ribbon's Reference group; gridlines render as dashed cyan lines with labeled bubbles extending across the viewport
+- **Snap to gridlines** — when snap is enabled, elements automatically snap to nearby gridlines (takes priority over regular grid snap); works with all element types during creation
+- **Wall alignment mode** — press Tab during wall creation to cycle alignment (left / center / right) relative to gridlines; offsets the wall by half its thickness so the chosen face aligns with the gridline
+- **Gridline persistence** — gridlines are saved/restored with auto-save and project export/import
+- **Ortho constraint (Shift)** — hold Shift during two-click placement (walls, gridlines, beams, etc.) to constrain the line to be perfectly horizontal or vertical based on the dominant direction
+
+### Added
+- **Multi-select** — Ctrl+click to add/remove elements from selection; box/marquee select by click-dragging in the 3D viewport to select all elements within the rectangle; multi-select highlights all selected elements in the Project Browser tree and shows a selection summary with type counts in the Properties panel
+- **Bulk delete** — delete all selected elements at once via Delete/Backspace key or the bulk delete button in the Properties panel; arrow key movement now applies to all selected elements simultaneously
+- **Dimension labels** — selected elements display floating dimension labels in the 3D viewport showing key measurements (length, height, width, depth) as canvas-textured sprites positioned above each element
 - **Story navigation** — click the arrow icon next to any level in the Levels tab of the Project Browser to fly the 3D camera to that story's height
-- **Arrow key bulk move** — arrow keys now move all selected elements simultaneously (previously only moved a single element)
+
+### Changed
+- **Status bar** — updated keyboard shortcuts hint to show multi-select shortcut (Ctrl+Click); shows count of selected elements when more than one is selected
+
+### Added
+- **AI Image-to-BIM** — Upload a floor plan image (photo, sketch, or CAD drawing) and generate walls, doors, and windows using Claude's vision API; includes API key management, image preview, scale hints, element preview before applying, and full batch undo/redo support; accessible from the "AI" group in the Architecture ribbon tab
+- **Multi-window views** — Revit-style multi-pane viewport system supporting up to 4 simultaneous views; layout presets (Single, 2-Up, 3-Up, 4-Up) accessible from the View ribbon tab or keyboard shortcuts 1-4; each pane can independently be set to 3D View, Plan View, Front/Back/Left/Right Elevation, or 2D Sheet via a dropdown in the pane header; panes can be closed individually and new views added from the "Add View" ribbon group
 - **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
 - **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar
 - **Element manipulation tools** — Move (+/-X, +/-Z), Rotate (+/-45°), Copy, and Mirror tools in the Modify ribbon tab for transforming placed elements
@@ -22,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Project Browser element selection** — clicking an authored element in the Project Browser tree now selects it, shows its properties in the Properties panel, and flies the 3D camera to it
 
 ### Changed
+- **Redesigned PDF/2D Sheet layout** — replaced side-by-side split view default with tabbed viewport; 3D View is now the default with "3D View" / "2D Sheet" tabs for switching; split view remains available via the View ribbon tab
 - **Viewer3D refactored** — extracted all geometry builders (20 build functions, materials, wall openings) into `src/components/geometryBuilders.ts`, reducing Viewer3D from ~2,325 to ~1,210 lines
 
 ### Fixed

@@ -21,6 +21,7 @@ interface ProjectBrowserProps {
   bimElements: BimElement[];
   markups: Markup[];
   selectedElement: SelectedElement | null;
+  selectedElementIds: string[];
   onSelectElement: (elementId: string) => void;
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
   onMarkupNavigate: (markup: Markup) => void;
@@ -34,10 +35,12 @@ interface ProjectBrowserProps {
 
 interface PropertiesPanelProps {
   selectedElement: SelectedElement | null;
+  selectedElementIds: string[];
   bimElements: BimElement[];
   markups: Markup[];
   onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
   onBimElementDelete: (id: string) => void;
+  onBulkDelete: () => void;
   onMarkupStatusChange: (id: string, status: Markup["status"]) => void;
   onMarkupNavigate: (markup: Markup) => void;
   onMarkupLink: (markupId: string) => void;
@@ -84,19 +87,19 @@ const TYPE_ICONS: Record<string, string> = {
 function TreeNode({
   node,
   depth,
-  selectedId,
+  selectedNames,
   onSelect,
 }: {
   node: SpatialNode;
   depth: number;
-  selectedId?: string;
+  selectedNames?: Set<string>;
   onSelect?: (name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const icon = TYPE_ICONS[node.type] || "*";
   const isLeaf = !hasChildren;
-  const isSelected = selectedId !== undefined && node.name === selectedId;
+  const isSelected = selectedNames?.has(node.name) ?? false;
 
   const handleClick = () => {
     if (hasChildren) {
@@ -139,7 +142,7 @@ function TreeNode({
               key={child.expressID || `${child.type}-${idx}`}
               node={child}
               depth={depth + 1}
-              selectedId={selectedId}
+              selectedNames={selectedNames}
               onSelect={onSelect}
             />
           ))}
@@ -353,6 +356,7 @@ export function ProjectBrowser({
   bimElements,
   markups,
   selectedElement,
+  selectedElementIds,
   onSelectElement,
   onMarkupStatusChange,
   onMarkupNavigate,
@@ -393,9 +397,14 @@ export function ProjectBrowser({
     }
   };
 
-  const selectedName = selectedElement
-    ? bimElements.find((e) => e.id === selectedElement.globalId)?.name
-    : undefined;
+  const selectedNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const id of selectedElementIds) {
+      const el = bimElements.find((e) => e.id === id);
+      if (el) names.add(el.name);
+    }
+    return names;
+  }, [selectedElementIds, bimElements]);
 
   return (
     <div className="browser-panel">
@@ -471,7 +480,7 @@ export function ProjectBrowser({
                       key={`authored-${node.type}`}
                       node={node}
                       depth={0}
-                      selectedId={selectedName}
+                      selectedNames={selectedNames}
                       onSelect={handleTreeSelect}
                     />
                   ))}
@@ -529,10 +538,12 @@ export function ProjectBrowser({
 
 export function PropertiesPanel({
   selectedElement,
+  selectedElementIds,
   bimElements,
   markups,
   onBimElementUpdate,
   onBimElementDelete,
+  onBulkDelete,
   onMarkupStatusChange,
   onMarkupNavigate,
   onMarkupLink,
@@ -540,6 +551,9 @@ export function PropertiesPanel({
   const selectedBimElement = bimElements.find(
     (el) => el.id === selectedElement?.globalId,
   );
+
+  const multiSelectCount = selectedElementIds.length;
+  const isMultiSelect = multiSelectCount > 1;
 
   const linkedCount = selectedElement
     ? markups.filter((m) => m.linkedBimGuid === selectedElement.globalId).length
@@ -549,10 +563,85 @@ export function PropertiesPanel({
     <div className="properties-panel">
       <div className="properties-header">
         <span>Properties</span>
+        {isMultiSelect && (
+          <span className="text-[9px]" style={{ color: "var(--accent-blue)" }}>
+            {multiSelectCount} selected
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {!selectedElement && !selectedBimElement ? (
+        {isMultiSelect ? (
+          <div className="prop-grid animate-fade-in">
+            <div className="properties-type-selector">
+              <span className="properties-type-badge">
+                {multiSelectCount} Elements Selected
+              </span>
+            </div>
+            <div className="prop-section">
+              <div
+                className="prop-section-header"
+                style={{ cursor: "default" }}
+              >
+                Selection Summary
+              </div>
+              {(() => {
+                const typeCounts = new Map<string, number>();
+                for (const id of selectedElementIds) {
+                  const el = bimElements.find((e) => e.id === id);
+                  if (el)
+                    typeCounts.set(el.type, (typeCounts.get(el.type) ?? 0) + 1);
+                }
+                return Array.from(typeCounts.entries()).map(([type, count]) => (
+                  <div key={type} className="prop-row">
+                    <span
+                      className="prop-label"
+                      style={{ textTransform: "capitalize" }}
+                    >
+                      {type}
+                    </span>
+                    <div className="prop-value">
+                      <span
+                        className="prop-input"
+                        style={{
+                          background: "none",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {count}
+                      </span>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div style={{ padding: "8px 10px" }}>
+              <button
+                type="button"
+                onClick={onBulkDelete}
+                className="w-full flex items-center justify-center gap-1 px-3 py-1.5 rounded text-[11px] transition-colors"
+                style={{
+                  color: "#ef4444",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  background: "rgba(239, 68, 68, 0.08)",
+                }}
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path d="M3 4 L13 4 M5 4 L5 2 L11 2 L11 4 M4 4 L4 14 L12 14 L12 4" />
+                  <line x1="7" y1="7" x2="7" y2="11" />
+                  <line x1="9" y1="7" x2="9" y2="11" />
+                </svg>
+                Delete {multiSelectCount} Elements
+              </button>
+            </div>
+          </div>
+        ) : !selectedElement && !selectedBimElement ? (
           <div
             className="p-4 text-center"
             style={{ color: "var(--text-muted)" }}

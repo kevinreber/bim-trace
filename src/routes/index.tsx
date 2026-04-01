@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import AnnotationLayer from "@/components/AnnotationLayer";
-import PdfViewer from "@/components/PdfViewer";
+import AiGenerateModal from "@/components/AiGenerateModal";
 import RibbonToolbar from "@/components/RibbonToolbar";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
-import Viewer3D from "@/components/Viewer3D";
+import ViewportPane from "@/components/ViewportPane";
 import {
   clearProject,
   exportProjectJSON,
@@ -17,6 +16,7 @@ import type {
   AnnotationTool,
   BimElement,
   CreationTool,
+  GridLine,
   GridSize,
   Level,
   Markup,
@@ -24,14 +24,16 @@ import type {
   SpatialNode,
   UndoAction,
   Viewer3DHandle,
+  ViewLayout,
+  ViewPane,
+  ViewPaneType,
+  WallAlignMode,
 } from "@/types";
-import { DEFAULT_LEVELS, DEFAULT_PARAMS } from "@/types";
+import { DEFAULT_LEVELS, DEFAULT_PANES, VIEW_PANE_LABELS } from "@/types";
 
 export const Route = createFileRoute("/")({
   component: Home,
 });
-
-type ViewMode = "split" | "3d" | "2d";
 
 interface Toast {
   id: string;
@@ -41,14 +43,14 @@ interface Toast {
 
 function Home() {
   const [tree, setTree] = useState<SpatialNode[]>([]);
-  const [selectedElements, setSelectedElements] = useState<SelectedElement[]>(
-    [],
-  );
-  // Convenience: first selected element (for backward compat with single-select APIs)
-  const selectedElement = selectedElements[0] ?? null;
+  const [selectedElement, setSelectedElement] =
+    useState<SelectedElement | null>(null);
+  // Multi-select: tracks all selected element IDs (authored BIM elements)
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [markups, setMarkups] = useState<Markup[]>([]);
   const [activeTool, setActiveTool] = useState<AnnotationTool>("select");
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [viewPanes, setViewPanes] = useState<ViewPane[]>(DEFAULT_PANES);
+  const [viewLayout, setViewLayout] = useState<ViewLayout>("single");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasPdf, setHasPdf] = useState(false);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,12 +68,19 @@ function Home() {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [gridSize, setGridSize] = useState<GridSize>(0.5);
 
+  // Gridlines (user-created reference lines)
+  const [gridLines, setGridLines] = useState<GridLine[]>([]);
+  const [wallAlignMode, setWallAlignMode] = useState<WallAlignMode>("center");
+
   // Level management
   const [levels, setLevels] = useState<Level[]>(DEFAULT_LEVELS);
   const [activeLevel, setActiveLevel] = useState<string>("ground");
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // AI Generate modal
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Persistence: loaded flag
   const [projectLoaded, setProjectLoaded] = useState(false);
@@ -99,6 +108,7 @@ function Home() {
           setMarkups(data.markups);
           setLevels(data.levels);
           setActiveLevel(data.activeLevel);
+          if (data.gridLines) setGridLines(data.gridLines);
           showToast("Project restored from auto-save", "info");
         }
       })
@@ -119,13 +129,14 @@ function Home() {
         markups,
         levels,
         activeLevel,
+        gridLines,
         savedAt: Date.now(),
       }).catch(() => {});
     }, 1000);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [bimElements, markups, levels, activeLevel, projectLoaded]);
+  }, [bimElements, markups, levels, activeLevel, gridLines, projectLoaded]);
 
   // ── Persistence: export/import/new project ──────────────────
   const handleExportProject = useCallback(() => {
@@ -134,11 +145,12 @@ function Home() {
       markups,
       levels,
       activeLevel,
+      gridLines,
       savedAt: Date.now(),
     };
     exportProjectJSON(data);
     showToast("Project exported", "success");
-  }, [bimElements, markups, levels, activeLevel, showToast]);
+  }, [bimElements, markups, levels, activeLevel, gridLines, showToast]);
 
   const handleImportProject = useCallback(() => {
     const input = document.createElement("input");
@@ -153,6 +165,7 @@ function Home() {
         setMarkups(data.markups);
         setLevels(data.levels);
         setActiveLevel(data.activeLevel);
+        setGridLines(data.gridLines ?? []);
         undoStackRef.current = [];
         redoStackRef.current = [];
         showToast("Project imported", "success");
@@ -168,7 +181,9 @@ function Home() {
     setMarkups([]);
     setLevels(DEFAULT_LEVELS);
     setActiveLevel("ground");
-    setSelectedElements([]);
+    setGridLines([]);
+    setSelectedElement(null);
+    setSelectedElementIds([]);
     undoStackRef.current = [];
     redoStackRef.current = [];
     clearProject().catch(() => {});
@@ -182,18 +197,22 @@ function Home() {
   const handleElementSelected = useCallback(
     (element: SelectedElement | null, ctrlKey = false) => {
       if (!element) {
-        setSelectedElements([]);
+        // Deselect all
+        setSelectedElement(null);
+        setSelectedElementIds([]);
         return;
       }
+      setSelectedElement(element);
       if (ctrlKey) {
-        // Toggle: if already selected, remove; otherwise add
-        setSelectedElements((prev) => {
-          const exists = prev.some((e) => e.globalId === element.globalId);
-          if (exists) return prev.filter((e) => e.globalId !== element.globalId);
-          return [...prev, element];
-        });
+        // Toggle element in/out of multi-selection
+        setSelectedElementIds((prev) =>
+          prev.includes(element.globalId)
+            ? prev.filter((id) => id !== element.globalId)
+            : [...prev, element.globalId],
+        );
       } else {
-        setSelectedElements([element]);
+        // Replace selection with single element
+        setSelectedElementIds([element.globalId]);
       }
     },
     [],
@@ -230,7 +249,6 @@ function Home() {
   const handleMarkupNavigate = useCallback((markup: Markup) => {
     if (!markup.linkedBimGuid) return;
     viewer3DRef.current?.flyToElement(markup.linkedBimGuid);
-    setViewMode((prev) => (prev === "2d" ? "split" : prev));
   }, []);
 
   // Select an authored element from the Project Browser tree
@@ -238,17 +256,15 @@ function Home() {
     (elementId: string) => {
       const el = bimElements.find((e) => e.id === elementId);
       if (!el) return;
-      const selEl: SelectedElement = {
+      setSelectedElement({
         expressID: 0,
         globalId: el.id,
         type: el.type,
         name: el.name,
         properties: el.params as Record<string, string | number | boolean>,
-      };
-      setSelectedElements([selEl]);
-      // Fly to it in the 3D view
+      });
+      setSelectedElementIds([el.id]);
       viewer3DRef.current?.flyToElement(el.id);
-      setViewMode((prev) => (prev === "2d" ? "split" : prev));
     },
     [bimElements],
   );
@@ -260,7 +276,6 @@ function Home() {
       if (!level) return;
       setActiveLevel(levelId);
       viewer3DRef.current?.flyToLevel(level.height);
-      setViewMode((prev) => (prev === "2d" ? "split" : prev));
     },
     [levels],
   );
@@ -290,6 +305,81 @@ function Home() {
     },
     [selectedElement],
   );
+
+  // ── Multi-pane management ────────────────────────────────────
+  const handleAddPane = useCallback(
+    (type: ViewPaneType) => {
+      const newPane: ViewPane = {
+        id: crypto.randomUUID(),
+        type,
+        title: VIEW_PANE_LABELS[type],
+      };
+      setViewPanes((prev) => {
+        const next = [...prev, newPane];
+        if (next.length >= 4) setViewLayout("4-up");
+        else if (next.length >= 3) setViewLayout("3-up");
+        else if (next.length >= 2) setViewLayout("2-up");
+        return next;
+      });
+      showToast(`Opened ${VIEW_PANE_LABELS[type]}`, "info");
+    },
+    [showToast],
+  );
+
+  const handleClosePane = useCallback((id: string) => {
+    setViewPanes((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      if (next.length <= 1) setViewLayout("single");
+      else if (next.length === 2) setViewLayout("2-up");
+      else if (next.length === 3) setViewLayout("3-up");
+      return next;
+    });
+  }, []);
+
+  const handleChangePaneType = useCallback((id: string, type: ViewPaneType) => {
+    setViewPanes((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, type, title: VIEW_PANE_LABELS[type] } : p,
+      ),
+    );
+  }, []);
+
+  const handleSetLayout = useCallback((layout: ViewLayout) => {
+    setViewLayout(layout);
+    setViewPanes((prev) => {
+      const target =
+        layout === "single"
+          ? 1
+          : layout === "2-up"
+            ? 2
+            : layout === "3-up"
+              ? 3
+              : 4;
+      if (prev.length < target) {
+        // Add default panes to fill
+        const defaults: ViewPaneType[] = [
+          "3d",
+          "plan",
+          "front-elevation",
+          "right-elevation",
+        ];
+        const panes = [...prev];
+        while (panes.length < target) {
+          const type = defaults[panes.length] ?? "3d";
+          panes.push({
+            id: crypto.randomUUID(),
+            type,
+            title: VIEW_PANE_LABELS[type],
+          });
+        }
+        return panes;
+      }
+      if (prev.length > target) {
+        return prev.slice(0, target);
+      }
+      return prev;
+    });
+  }, []);
 
   // BIM authoring callbacks
   const handleElementCreated = useCallback(
@@ -337,26 +427,52 @@ function Home() {
         }
         return prev.filter((e) => e.id !== id);
       });
-      setSelectedElements((prev) => prev.filter((e) => e.globalId !== id));
+      setSelectedElement((prev) => (prev?.globalId === id ? null : prev));
+      setSelectedElementIds((prev) => prev.filter((eid) => eid !== id));
     },
     [showToast],
   );
 
-  // Bulk delete all selected elements
   const handleBulkDelete = useCallback(() => {
-    const ids = new Set(selectedElements.map((e) => e.globalId));
-    if (ids.size === 0) return;
+    if (selectedElementIds.length === 0) return;
     setBimElements((prev) => {
-      const toDelete = prev.filter((e) => ids.has(e.id));
-      if (toDelete.length > 0) {
-        undoStackRef.current.push({ type: "bulkDelete", elements: toDelete });
-        redoStackRef.current = [];
-        showToast(`Deleted ${toDelete.length} element(s)`, "info");
+      const idsToDelete = new Set(selectedElementIds);
+      const deleted = prev.filter((e) => idsToDelete.has(e.id));
+      for (const el of deleted) {
+        undoStackRef.current.push({ type: "delete", element: el });
       }
-      return prev.filter((e) => !ids.has(e.id));
+      redoStackRef.current = [];
+      showToast(
+        `Deleted ${deleted.length} element${deleted.length !== 1 ? "s" : ""}`,
+        "info",
+      );
+      return prev.filter((e) => !idsToDelete.has(e.id));
     });
-    setSelectedElements([]);
-  }, [selectedElements, showToast]);
+    setSelectedElement(null);
+    setSelectedElementIds([]);
+  }, [selectedElementIds, showToast]);
+
+  // Gridline handlers
+  const handleGridLineCreated = useCallback(
+    (gl: GridLine) => {
+      setGridLines((prev) => [...prev, gl]);
+      showToast(`Created gridline: ${gl.label}`, "success");
+    },
+    [showToast],
+  );
+
+  // AI batch add handler
+  const handleAiBatchAdd = useCallback(
+    (elements: BimElement[]) => {
+      const els = elements.map((el) => ({ ...el, level: activeLevelHeight }));
+      setBimElements((prev) => [...prev, ...els]);
+      undoStackRef.current.push({ type: "batchAdd", elements: els });
+      redoStackRef.current = [];
+      showToast(`Generated ${els.length} elements from image`, "success");
+      setAiModalOpen(false);
+    },
+    [activeLevelHeight, showToast],
+  );
 
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
@@ -372,9 +488,6 @@ function Home() {
       case "delete":
         setBimElements((prev) => [...prev, action.element]);
         break;
-      case "bulkDelete":
-        setBimElements((prev) => [...prev, ...action.elements]);
-        break;
       case "update":
         setBimElements((prev) =>
           prev.map((el) =>
@@ -382,6 +495,11 @@ function Home() {
           ),
         );
         break;
+      case "batchAdd": {
+        const ids = new Set(action.elements.map((el) => el.id));
+        setBimElements((prev) => prev.filter((el) => !ids.has(el.id)));
+        break;
+      }
       case "addMarkup":
         setMarkups((prev) => prev.filter((m) => m.id !== action.markup.id));
         break;
@@ -413,17 +531,15 @@ function Home() {
           prev.filter((el) => el.id !== action.element.id),
         );
         break;
-      case "bulkDelete": {
-        const ids = new Set(action.elements.map((e) => e.id));
-        setBimElements((prev) => prev.filter((el) => !ids.has(el.id)));
-        break;
-      }
       case "update":
         setBimElements((prev) =>
           prev.map((el) =>
             el.id === action.id ? { ...el, ...action.after } : el,
           ),
         );
+        break;
+      case "batchAdd":
+        setBimElements((prev) => [...prev, ...action.elements]);
         break;
       case "addMarkup":
         setMarkups((prev) => [...prev, action.markup]);
@@ -478,9 +594,9 @@ function Home() {
         return;
       }
 
-      // Delete selected element(s) — bulk delete if multiple selected
+      // Delete selected element(s)
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedElements.length > 1) {
+        if (selectedElementIds.length > 1) {
           e.preventDefault();
           handleBulkDelete();
         } else if (selectedElement) {
@@ -496,21 +612,21 @@ function Home() {
       }
 
       // Arrow keys to move selected element(s)
-      if (selectedElements.length > 0 && !e.shiftKey) {
-        const step = snapEnabled ? gridSize : 0.5;
+      if (selectedElementIds.length > 0 && !e.shiftKey) {
         if (
           e.key === "ArrowLeft" ||
           e.key === "ArrowRight" ||
           e.key === "ArrowUp" ||
           e.key === "ArrowDown"
         ) {
-          e.preventDefault();
+          const step = snapEnabled ? gridSize : 0.5;
           const dx =
             e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
           const dz =
             e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-          for (const sel of selectedElements) {
-            const bimEl = bimElements.find((el) => el.id === sel.globalId);
+          e.preventDefault();
+          for (const id of selectedElementIds) {
+            const bimEl = bimElements.find((el) => el.id === id);
             if (bimEl) {
               handleBimElementUpdate(bimEl.id, {
                 start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
@@ -522,17 +638,21 @@ function Home() {
         }
       }
 
-      // View mode shortcuts
+      // View layout shortcuts
       if (e.key === "1") {
-        setViewMode("split");
+        handleSetLayout("single");
         return;
       }
       if (e.key === "2") {
-        setViewMode("3d");
+        handleSetLayout("2-up");
         return;
       }
       if (e.key === "3") {
-        setViewMode("2d");
+        handleSetLayout("3-up");
+        return;
+      }
+      if (e.key === "4") {
+        handleSetLayout("4-up");
         return;
       }
 
@@ -542,10 +662,21 @@ function Home() {
         return;
       }
 
-      // Escape — deselect tool
+      // Tab — cycle wall alignment mode (left / center / right)
+      if (e.key === "Tab" && creationTool === "wall") {
+        e.preventDefault();
+        setWallAlignMode((prev) =>
+          prev === "center" ? "left" : prev === "left" ? "right" : "center",
+        );
+        return;
+      }
+
+      // Escape — deselect tool and clear selection
       if (e.key === "Escape") {
         setCreationTool("none");
         setActiveTool("select");
+        setSelectedElement(null);
+        setSelectedElementIds([]);
         return;
       }
 
@@ -590,11 +721,13 @@ function Home() {
     handleBimElementDelete,
     handleBulkDelete,
     handleBimElementUpdate,
+    handleSetLayout,
     selectedElement,
-    selectedElements,
+    selectedElementIds,
     bimElements,
     snapEnabled,
     gridSize,
+    creationTool,
   ]);
 
   const activeLevelName =
@@ -609,8 +742,10 @@ function Home() {
         annotationTool={activeTool}
         onAnnotationToolChange={setActiveTool}
         hasPdf={hasPdf}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        viewLayout={viewLayout}
+        onLayoutChange={handleSetLayout}
+        onAddPane={handleAddPane}
+        viewPanes={viewPanes}
         onUndo={handleUndo}
         onRedo={handleRedo}
         snapEnabled={snapEnabled}
@@ -624,10 +759,9 @@ function Home() {
         onExportProject={handleExportProject}
         onImportProject={handleImportProject}
         selectedElement={selectedElement}
-        selectedElements={selectedElements}
         bimElements={bimElements}
         onBimElementUpdate={handleBimElementUpdate}
-        onBulkDelete={handleBulkDelete}
+        onAiGenerate={() => setAiModalOpen(true)}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
@@ -639,6 +773,7 @@ function Home() {
             bimElements={bimElements}
             markups={markups}
             selectedElement={selectedElement}
+            selectedElementIds={selectedElementIds}
             onSelectElement={handleSelectElement}
             onMarkupStatusChange={handleMarkupStatusChange}
             onMarkupNavigate={handleMarkupNavigate}
@@ -651,84 +786,78 @@ function Home() {
           />
         </div>
 
-        {/* Center: Viewports */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* 3D Viewer */}
-          {(viewMode === "split" || viewMode === "3d") && (
-            <div
-              className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full relative`}
-              style={{
-                borderRight:
-                  viewMode === "split" ? "1px solid var(--border)" : undefined,
-              }}
-            >
-              <Viewer3D
-                ref={viewer3DRef}
-                onModelLoaded={handleModelLoaded}
-                onElementSelected={handleElementSelected}
-                creationTool={creationTool}
-                onElementCreated={handleElementCreated}
-                bimElements={bimElements}
-                defaultParams={DEFAULT_PARAMS}
-                snapEnabled={snapEnabled}
-                gridSize={gridSize}
-                selectedElements={selectedElements}
-              />
-              {/* Viewport label (like Revit's viewport title) */}
-              <div
-                className="absolute top-2 left-2 z-10 px-2 py-1 rounded text-[10px] font-medium"
-                style={{
-                  background: "rgba(0,0,0,0.5)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                3D View
-              </div>
-            </div>
-          )}
+        {/* Center: Multi-pane Viewports */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Viewport tabs showing open panes */}
+          <div className="viewport-tabs">
+            {viewPanes.map((pane) => (
+              <span key={pane.id} className="viewport-tab active">
+                {pane.title}
+              </span>
+            ))}
+            <span className="viewport-tab-badge">
+              {viewLayout === "single"
+                ? "Single"
+                : viewLayout === "2-up"
+                  ? "2-Up"
+                  : viewLayout === "3-up"
+                    ? "3-Up"
+                    : "4-Up"}
+            </span>
+          </div>
 
-          {/* 2D PDF Viewer */}
-          {(viewMode === "split" || viewMode === "2d") && (
-            <div
-              className={`${viewMode === "split" ? "w-1/2" : "flex-1"} h-full flex flex-col`}
-            >
-              <div className="flex-1 relative overflow-hidden">
-                <PdfViewer
+          {/* Viewport grid */}
+          <div
+            className={`flex-1 overflow-hidden viewport-grid viewport-grid-${viewLayout}`}
+          >
+            {viewPanes.map((pane) => {
+              const isFirst3D =
+                pane.type !== "2d-sheet" &&
+                viewPanes.find((p) => p.type !== "2d-sheet")?.id === pane.id;
+              return (
+                <ViewportPane
+                  key={`${pane.id}-${pane.type}`}
+                  pane={pane}
+                  onClose={handleClosePane}
+                  onChangeType={handleChangePaneType}
+                  canClose={viewPanes.length > 1}
+                  viewer3DRef={isFirst3D ? viewer3DRef : undefined}
+                  onModelLoaded={handleModelLoaded}
+                  onElementSelected={handleElementSelected}
+                  creationTool={creationTool}
+                  onElementCreated={handleElementCreated}
+                  bimElements={bimElements}
+                  selectedElementIds={selectedElementIds}
+                  snapEnabled={snapEnabled}
+                  gridSize={gridSize}
+                  gridLines={gridLines}
+                  onGridLineCreated={handleGridLineCreated}
+                  wallAlignMode={wallAlignMode}
+                  pdfCanvasRef={
+                    pane.type === "2d-sheet" ? pdfCanvasRef : undefined
+                  }
                   onPageChange={handlePageChange}
-                  canvasRef={pdfCanvasRef}
+                  hasPdf={hasPdf}
+                  activeTool={activeTool}
+                  onMarkupCreated={handleMarkupCreated}
+                  currentPage={currentPage}
+                  selectedElement={selectedElement}
                 />
-                {hasPdf && (
-                  <AnnotationLayer
-                    activeTool={activeTool}
-                    pdfCanvasRef={pdfCanvasRef}
-                    onMarkupCreated={handleMarkupCreated}
-                    currentPage={currentPage}
-                    selectedElement={selectedElement}
-                  />
-                )}
-                {/* Viewport label */}
-                <div
-                  className="absolute top-2 left-2 z-10 px-2 py-1 rounded text-[10px] font-medium"
-                  style={{
-                    background: "rgba(0,0,0,0.5)",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  2D Sheet
-                </div>
-              </div>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
 
         {/* Right panel: Properties */}
         <div className="w-72 shrink-0">
           <PropertiesPanel
             selectedElement={selectedElement}
+            selectedElementIds={selectedElementIds}
             bimElements={bimElements}
             markups={markups}
             onBimElementUpdate={handleBimElementUpdate}
             onBimElementDelete={handleBimElementDelete}
+            onBulkDelete={handleBulkDelete}
             onMarkupStatusChange={handleMarkupStatusChange}
             onMarkupNavigate={handleMarkupNavigate}
             onMarkupLink={handleMarkupLink}
@@ -760,6 +889,19 @@ function Home() {
               Snap: {gridSize}m
             </span>
           )}
+          {creationTool === "wall" && gridLines.length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot amber" />
+              Align: {wallAlignMode} (Tab)
+            </span>
+          )}
+          {gridLines.length > 0 && (
+            <span className="status-indicator">
+              <span className="status-dot" style={{ background: "#06b6d4" }} />
+              {gridLines.length} gridline
+              {gridLines.length !== 1 ? "s" : ""}
+            </span>
+          )}
           <span className="status-indicator">
             <span className="status-dot blue" />
             Level: {activeLevelName} ({activeLevelHeight}m)
@@ -771,14 +913,15 @@ function Home() {
             </span>
           )}
           {hasPdf && <span>Page {currentPage}</span>}
-          {selectedElements.length > 1 && (
+          {selectedElementIds.length > 1 && (
             <span className="status-indicator">
               <span className="status-dot blue" />
-              {selectedElements.length} selected
+              {selectedElementIds.length} selected
             </span>
           )}
           <span style={{ color: "var(--text-muted)" }}>
-            Shift+Key = Create | G = Snap | Ctrl+Click = Multi-select
+            Shift+Key = Create | G = Snap | Tab = Align | Ctrl+Click =
+            Multi-select
           </span>
         </div>
       </div>
@@ -817,6 +960,11 @@ function Home() {
           ))}
         </div>
       )}
+      <AiGenerateModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onApply={handleAiBatchAdd}
+      />
     </div>
   );
 }

@@ -508,6 +508,56 @@ body,
   transform: rotate(90deg);
 }
 
+/* ── Viewport Tabs ───────────────────────────────────────────────── */
+
+.viewport-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+  flex-shrink: 0;
+  min-height: 30px;
+}
+
+.viewport-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+  white-space: nowrap;
+}
+
+.viewport-tab:hover {
+  color: var(--foreground);
+}
+
+.viewport-tab.active {
+  color: var(--foreground);
+  border-bottom-color: var(--accent);
+}
+
+.viewport-tab-badge {
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+  align-self: center;
+}
+
 /* ── Status Bar (bottom) ──────────────────────────────────────────── */
 
 .status-bar {
@@ -566,6 +616,118 @@ body,
   background: var(--accent-blue);
 }
 
+/* ── Multi-pane Viewport Grid ────────────────────────────────────── */
+
+.viewport-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+}
+
+.viewport-grid-single {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.viewport-grid-2-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.viewport-grid-3-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.viewport-grid-3-up > :first-child {
+  grid-row: 1 / 3;
+}
+
+.viewport-grid-4-up {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* ── Viewport Pane ───────────────────────────────────────────────── */
+
+.viewport-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewport-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 24px;
+  gap: 6px;
+}
+
+.viewport-pane-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.viewport-pane-type-select {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 2px;
+  cursor: pointer;
+  outline: none;
+}
+
+.viewport-pane-type-select:hover {
+  color: var(--foreground);
+}
+
+.viewport-pane-type-select:focus {
+  color: var(--foreground);
+}
+
+.viewport-pane-type-select option {
+  background: var(--panel-bg);
+  color: var(--foreground);
+}
+
+.viewport-pane-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.viewport-pane-close:hover {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ef5350;
+}
+
+.viewport-pane-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* ── Animations ───────────────────────────────────────────────────── */
 
 @keyframes slide-in {
@@ -594,4 +756,247 @@ body,
 
 .animate-fade-in {
   animation: fade-in 0.15s ease-out;
+}
+
+/* ── AI Generate Modal ──────────────────────────────────────────── */
+.ai-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  animation: fade-in 0.15s ease-out;
+}
+
+.ai-modal-content {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  animation: slide-in 0.2s ease-out;
+}
+
+.ai-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.ai-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.ai-modal-section {
+  padding: 12px 16px;
+}
+
+.ai-modal-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.ai-modal-input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.ai-modal-input:focus {
+  border-color: var(--accent-blue);
+}
+
+.ai-modal-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.ai-modal-btn-sm {
+  background: var(--ribbon-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ai-modal-btn-sm:hover {
+  background: var(--ribbon-hover);
+  color: var(--text-primary);
+}
+
+.ai-modal-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.ai-modal-dropzone:hover,
+.ai-modal-dropzone.drag-over {
+  border-color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+}
+
+.ai-modal-dropzone.has-image {
+  padding: 8px;
+  border-style: solid;
+}
+
+.ai-modal-dropzone-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ai-modal-file-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ai-modal-preview-img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.ai-modal-error {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, #ef5350 15%, transparent);
+  border: 1px solid #ef5350;
+  border-radius: 4px;
+  color: #ef5350;
+  font-size: 12px;
+}
+
+.ai-modal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ai-modal-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-modal-preview {
+  margin: 0 16px 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--accent-green) 10%, transparent);
+  border: 1px solid var(--accent-green);
+  border-radius: 4px;
+}
+
+.ai-modal-preview-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-green);
+  margin-bottom: 8px;
+}
+
+.ai-modal-preview-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-modal-count-badge {
+  background: color-mix(in srgb, var(--accent-green) 20%, transparent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.ai-modal-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.ai-modal-btn {
+  background: var(--ribbon-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ai-modal-btn:hover {
+  background: var(--ribbon-hover);
+  color: var(--text-primary);
+}
+
+.ai-modal-btn.primary {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.ai-modal-btn.primary:hover {
+  background: color-mix(in srgb, var(--accent-blue) 85%, #fff);
+}
+
+.ai-modal-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

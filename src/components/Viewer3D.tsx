@@ -10,12 +10,15 @@ import {
 import * as THREE from "three";
 import type {
   BimElement,
+  CameraPreset,
   CreationTool,
   DEFAULT_PARAMS,
+  GridLine,
   GridSize,
   SelectedElement,
   SpatialNode,
   Viewer3DHandle,
+  WallAlignMode,
 } from "@/types";
 import {
   buildBeamMesh,
@@ -39,7 +42,7 @@ import {
   buildToiletMesh,
   buildWallMesh,
   buildWindowMesh,
-  ELEMENT_MATERIALS,
+  getMaterialForElement,
   GHOST_MATERIAL,
   INVALID_GHOST_MATERIAL,
   SNAP_INDICATOR_MAT,
@@ -56,10 +59,15 @@ interface Viewer3DProps {
   creationTool: CreationTool;
   onElementCreated: (element: BimElement) => void;
   bimElements: BimElement[];
+  selectedElementIds: string[];
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
   selectedElements?: SelectedElement[];
+  gridLines?: GridLine[];
+  onGridLineCreated?: (gl: GridLine) => void;
+  wallAlignMode?: WallAlignMode;
+  cameraPreset?: CameraPreset;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -106,10 +114,15 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     creationTool,
     onElementCreated,
     bimElements,
+    selectedElementIds,
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
     selectedElements = [],
+    gridLines = [],
+    onGridLineCreated,
+    wallAlignMode = "center",
+    cameraPreset,
   },
   ref,
 ) {
@@ -117,7 +130,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   const componentsRef = useRef<OBC.Components | null>(null);
   const worldRef = useRef<OBC.SimpleWorld<
     OBC.SimpleScene,
-    OBC.SimpleCamera,
+    OBC.OrthoPerspectiveCamera,
     OBC.SimpleRenderer
   > | null>(null);
   const modelRef = useRef<unknown>(null);
@@ -145,8 +158,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
 
-  /** Dimension label sprites for selected elements */
-  const dimensionSpritesRef = useRef<THREE.Sprite[]>([]);
+
 
   // Snap refs
   const snapEnabledRef = useRef(snapEnabled);
@@ -154,9 +166,33 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   const gridSizeRef = useRef(gridSize);
   gridSizeRef.current = gridSize;
 
+  // Gridline refs
+  const gridLinesRef = useRef(gridLines);
+  gridLinesRef.current = gridLines;
+  const wallAlignModeRef = useRef(wallAlignMode);
+  wallAlignModeRef.current = wallAlignMode;
+  /** Rendered gridline objects (THREE.Group per gridline) */
+  const gridLineObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
+  /** Auto-incrementing gridline label counter */
+  const gridLineLabelCounterRef = useRef(1);
+
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasModel, setHasModel] = useState(false);
+
+  // Box select state
+  const boxSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [boxSelectRect, setBoxSelectRect] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const boxSelectThreshold = 5; // min pixels to start box select
+  const boxSelectUsedRef = useRef(false);
+
+  // Dimension labels
+  const dimensionLabelsRef = useRef<THREE.Sprite[]>([]);
 
   // ── Scene setup ────────────────────────────────────────────
 
@@ -170,22 +206,52 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     const worlds = components.get(OBC.Worlds);
     const world = worlds.create<
       OBC.SimpleScene,
-      OBC.SimpleCamera,
+      OBC.OrthoPerspectiveCamera,
       OBC.SimpleRenderer
     >();
     worldRef.current = world;
 
     world.scene = new OBC.SimpleScene(components);
     world.renderer = new OBC.SimpleRenderer(components, container);
-    world.camera = new OBC.SimpleCamera(components);
+    world.camera = new OBC.OrthoPerspectiveCamera(components);
 
     components.init();
 
-    world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
+    if (cameraPreset) {
+      const [px, py, pz] = cameraPreset.position;
+      const [tx, ty, tz] = cameraPreset.target;
+      world.camera.controls.setLookAt(px, py, pz, tx, ty, tz);
+
+      // Switch to orthographic projection & Plan navigation for 2D views
+      if (cameraPreset.orthographic) {
+        world.camera.projection.set("Orthographic");
+        world.camera.set("Plan");
+      }
+    } else {
+      world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
+    }
     world.scene.setup();
 
     const grids = components.get(OBC.Grids);
-    grids.create(world);
+    const grid = grids.create(world);
+
+    // Disable grid fade for orthographic cameras (looks better)
+    if (cameraPreset?.orthographic) {
+      grid.fade = false;
+    }
+
+    // Set up section clipping plane if preset defines one
+    if (cameraPreset?.sectionPlane) {
+      const clipper = components.get(OBC.Clipper);
+      clipper.enabled = true;
+      const { normal, point } = cameraPreset.sectionPlane;
+      clipper.createFromNormalAndCoplanarPoint(
+        world,
+        new THREE.Vector3(normal[0], normal[1], normal[2]),
+        new THREE.Vector3(point[0], point[1], point[2]),
+      );
+      clipper.visible = false; // hide the plane helper
+    }
 
     world.scene.three.background = new THREE.Color(0x0f172a);
 
@@ -217,7 +283,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   // ── Highlight helpers ──────────────────────────────────────
 
-  const clearHighlights = useCallback(() => {
+  const highlightMeshes = useCallback((meshes: THREE.Mesh[]) => {
     const world = worldRef.current;
     if (!world) return;
     const scene = world.scene.three;
@@ -226,16 +292,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       h.geometry.dispose();
     }
     highlightedRef.current = [];
-  }, []);
 
-  const addHighlightForMesh = useCallback(
-    (mesh: THREE.Mesh) => {
-      const world = worldRef.current;
-      if (!world) return;
-      const scene = world.scene.three;
-      const highlightMat = highlightMatRef.current;
-      if (!highlightMat) return;
+    const highlightMat = highlightMatRef.current;
+    if (!highlightMat) return;
 
+    for (const mesh of meshes) {
       const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
       if (mesh.parent && mesh.parent !== scene) {
         mesh.updateWorldMatrix(true, false);
@@ -254,16 +315,152 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       highlight.renderOrder = 999;
       scene.add(highlight);
       highlightedRef.current.push(highlight);
+    }
+  }, []);
+
+  const highlightMesh = useCallback(
+    (mesh: THREE.Mesh | null) => {
+      highlightMeshes(mesh ? [mesh] : []);
+    },
+    [highlightMeshes],
+  );
+
+  // ── Dimension labels ──────────────────────────────────────
+
+  const clearDimensionLabels = useCallback(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    for (const sprite of dimensionLabelsRef.current) {
+      world.scene.three.remove(sprite);
+      (sprite.material as THREE.SpriteMaterial).map?.dispose();
+      (sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    dimensionLabelsRef.current = [];
+  }, []);
+
+  const createTextSprite = useCallback(
+    (text: string, position: THREE.Vector3): THREE.Sprite => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const fontSize = 28;
+      const padding = 8;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      const metrics = ctx.measureText(text);
+      const textWidth = metrics.width;
+      canvas.width = textWidth + padding * 2;
+      canvas.height = fontSize + padding * 2;
+
+      // Background
+      ctx.fillStyle = "rgba(30, 41, 59, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(0, 0, canvas.width, canvas.height, 4);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.6)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Text
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = "#93c5fd";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.position.copy(position);
+      // Scale sprite to reasonable world-space size
+      const aspect = canvas.width / canvas.height;
+      sprite.scale.set(aspect * 0.4, 0.4, 1);
+      sprite.renderOrder = 1001;
+      return sprite;
     },
     [],
   );
 
-  const highlightMesh = useCallback(
-    (mesh: THREE.Mesh | null) => {
-      clearHighlights();
-      if (mesh) addHighlightForMesh(mesh);
+  const updateDimensionLabels = useCallback(
+    (elementIds: string[]) => {
+      clearDimensionLabels();
+      const world = worldRef.current;
+      if (!world || elementIds.length === 0) return;
+
+      for (const id of elementIds) {
+        const el = bimElements.find((e) => e.id === id);
+        const mesh = authoredMeshesRef.current.get(id);
+        if (!el || !mesh) continue;
+
+        const box = new THREE.Box3().setFromObject(mesh);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        // Build dimension text based on element type
+        const labels: { text: string; pos: THREE.Vector3 }[] = [];
+        const params = el.params as Record<string, number>;
+
+        if (
+          el.type === "wall" ||
+          el.type === "beam" ||
+          el.type === "duct" ||
+          el.type === "pipe" ||
+          el.type === "railing" ||
+          el.type === "curtainWall"
+        ) {
+          // Linear elements: show length
+          const dx = el.end.x - el.start.x;
+          const dz = el.end.z - el.start.z;
+          const length = Math.sqrt(dx * dx + dz * dz);
+          labels.push({
+            text: `L: ${length.toFixed(2)}m`,
+            pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+          });
+          if (params.height) {
+            labels.push({
+              text: `H: ${params.height.toFixed(2)}m`,
+              pos: new THREE.Vector3(box.max.x + 0.3, center.y, center.z),
+            });
+          }
+        } else if (
+          el.type === "slab" ||
+          el.type === "ceiling" ||
+          el.type === "roof"
+        ) {
+          // Area elements: show width x depth
+          labels.push({
+            text: `${size.x.toFixed(2)} x ${size.z.toFixed(2)}m`,
+            pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+          });
+        } else {
+          // Single-click elements: show key dimensions above
+          const dimParts: string[] = [];
+          if (params.height) dimParts.push(`H:${params.height.toFixed(2)}`);
+          if (params.width) dimParts.push(`W:${params.width.toFixed(2)}`);
+          if (params.depth) dimParts.push(`D:${params.depth.toFixed(2)}`);
+          if (params.radius) dimParts.push(`R:${params.radius.toFixed(2)}`);
+          if (params.diameter) dimParts.push(`D:${params.diameter.toFixed(2)}`);
+          if (dimParts.length > 0) {
+            labels.push({
+              text: `${dimParts.join(" ")}m`,
+              pos: new THREE.Vector3(center.x, box.max.y + 0.3, center.z),
+            });
+          }
+        }
+
+        for (const label of labels) {
+          const sprite = createTextSprite(label.text, label.pos);
+          world.scene.three.add(sprite);
+          dimensionLabelsRef.current.push(sprite);
+        }
+      }
     },
-    [clearHighlights, addHighlightForMesh],
+    [bimElements, clearDimensionLabels, createTextSprite],
   );
 
   const flyToMesh = useCallback((mesh: THREE.Mesh) => {
@@ -294,17 +491,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           meshMapRef.current.get(globalId) ??
           authoredMeshesRef.current.get(globalId);
         if (!mesh) return;
-        highlightMesh(mesh);
         flyToMesh(mesh);
-
-        const element: SelectedElement = {
-          expressID: (mesh.userData.expressID as number) || 0,
-          globalId,
-          type: (mesh.userData.type as string) || mesh.name || "Element",
-          name: mesh.name || `Element #${mesh.id}`,
-          properties: extractProperties(mesh),
-        };
-        onElementSelected(element);
       },
       flyToLevel(height: number) {
         const world = worldRef.current;
@@ -320,7 +507,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         );
       },
     }),
-    [highlightMesh, flyToMesh, onElementSelected],
+    [flyToMesh],
   );
 
   const rebuildMeshMap = useCallback(() => {
@@ -334,70 +521,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }
     });
   }, []);
-
-  // ── Multi-select highlighting + dimension labels ───────────
-
-  useEffect(() => {
-    const world = worldRef.current;
-    if (!world) return;
-    const scene = world.scene.three;
-
-    // Clear existing highlights and dimension sprites
-    clearHighlights();
-    for (const sprite of dimensionSpritesRef.current) {
-      scene.remove(sprite);
-      (sprite.material as THREE.SpriteMaterial).map?.dispose();
-      (sprite.material as THREE.SpriteMaterial).dispose();
-    }
-    dimensionSpritesRef.current = [];
-
-    // Highlight all selected elements and add dimension labels
-    for (const sel of selectedElements) {
-      const mesh =
-        authoredMeshesRef.current.get(sel.globalId) ??
-        meshMapRef.current.get(sel.globalId);
-      if (!mesh) continue;
-      addHighlightForMesh(mesh);
-
-      // Create dimension label sprite
-      const box = new THREE.Box3().setFromObject(mesh);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-
-      const w = size.x.toFixed(2);
-      const h = size.y.toFixed(2);
-      const d = size.z.toFixed(2);
-      const label = `${w} x ${h} x ${d} m`;
-
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        canvas.width = 256;
-        canvas.height = 64;
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.roundRect(0, 0, 256, 64, 8);
-        ctx.fill();
-        ctx.font = "bold 22px Segoe UI, sans-serif";
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, 128, 32);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        const material = new THREE.SpriteMaterial({
-          map: texture,
-          transparent: true,
-          depthTest: false,
-        });
-        const sprite = new THREE.Sprite(material);
-        sprite.position.set(center.x, box.max.y + 0.5, center.z);
-        sprite.scale.set(2.5, 0.625, 1);
-        sprite.renderOrder = 1001;
-        scene.add(sprite);
-        dimensionSpritesRef.current.push(sprite);
-      }
-    }
-  }, [selectedElements, bimElements, clearHighlights, addHighlightForMesh]);
 
   // ── Ground plane raycasting ────────────────────────────────
 
@@ -418,11 +541,74 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const didHit = raycaster.ray.intersectPlane(groundPlaneRef.current, hit);
       if (!didHit) return null;
 
-      // Apply snap-to-grid
+      // Apply gridline snap (higher priority) then grid snap
       if (snapEnabledRef.current) {
-        const gs = gridSizeRef.current;
-        hit.x = Math.round(hit.x / gs) * gs;
-        hit.z = Math.round(hit.z / gs) * gs;
+        let snappedToGridLine = false;
+        const gls = gridLinesRef.current;
+        const threshold: number = gridSizeRef.current;
+
+        if (gls.length > 0) {
+          let bestDist: number = threshold;
+          let bestNx = hit.x;
+          let bestNz = hit.z;
+          let bestPerpX = 0;
+          let bestPerpZ = 0;
+
+          for (const gl of gls) {
+            const gdx = gl.end.x - gl.start.x;
+            const gdz = gl.end.z - gl.start.z;
+            const len2 = gdx * gdx + gdz * gdz;
+            if (len2 < 0.0001) continue;
+            const len = Math.sqrt(len2);
+
+            // Perpendicular distance from hit to the infinite line
+            const vx = hit.x - gl.start.x;
+            const vz = hit.z - gl.start.z;
+            // Signed cross product gives perpendicular distance
+            const cross = vx * (gdz / len) - vz * (gdx / len);
+            const dist = Math.abs(cross);
+
+            if (dist < bestDist) {
+              bestDist = dist;
+              // Project hit onto the line (nearest point)
+              const t = (vx * gdx + vz * gdz) / len2;
+              bestNx = gl.start.x + t * gdx;
+              bestNz = gl.start.z + t * gdz;
+              // Perpendicular unit vector (pointing away from line toward hit)
+              bestPerpX = -gdz / len;
+              bestPerpZ = gdx / len;
+              if (cross < 0) {
+                bestPerpX = -bestPerpX;
+                bestPerpZ = -bestPerpZ;
+              }
+            }
+          }
+
+          if (bestDist < threshold) {
+            snappedToGridLine = true;
+            // Apply wall alignment offset
+            const tool = creationToolRef.current;
+            if (tool === "wall") {
+              const wallThickness = defaultParamsRef.current.wall.thickness;
+              const mode = wallAlignModeRef.current;
+              let offset = 0;
+              if (mode === "left") offset = wallThickness / 2;
+              else if (mode === "right") offset = -wallThickness / 2;
+              hit.x = bestNx + bestPerpX * offset;
+              hit.z = bestNz + bestPerpZ * offset;
+            } else {
+              hit.x = bestNx;
+              hit.z = bestNz;
+            }
+          }
+        }
+
+        // Fall back to regular grid snap if not snapped to gridline
+        if (!snappedToGridLine) {
+          const gs = gridSizeRef.current;
+          hit.x = Math.round(hit.x / gs) * gs;
+          hit.z = Math.round(hit.z / gs) * gs;
+        }
       }
 
       return hit;
@@ -772,6 +958,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           );
           break;
         }
+        case "gridline": {
+          // Ghost line from start to cursor
+          const s = start ?? end;
+          const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(s.x, 0.02, s.z),
+            new THREE.Vector3(end.x, 0.02, end.z),
+          ]);
+          const lineMat = new THREE.LineBasicMaterial({
+            color: 0x06b6d4,
+            transparent: true,
+            opacity: 0.6,
+          });
+          // THREE.Line extends Object3D, not Mesh — wrap in a mesh-like group
+          const lineObj = new THREE.Line(lineGeo, lineMat);
+          // Use a tiny invisible mesh to satisfy the ghostMeshRef type
+          const dummyGeo = new THREE.SphereGeometry(0.05);
+          mesh = new THREE.Mesh(dummyGeo, GHOST_MATERIAL);
+          mesh.position.set(end.x, 0.02, end.z);
+          mesh.add(lineObj);
+          break;
+        }
         default:
           return;
       }
@@ -783,6 +990,27 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [clearGhost],
   );
 
+  // ── Ortho constraint (Shift = axis-lock) ───────────────────
+
+  /** When Shift is held and a start point exists, constrain the hit to
+   *  the nearest axis (horizontal or vertical) relative to the start. */
+  const applyOrthoConstraint = useCallback(
+    (hit: THREE.Vector3, shiftKey: boolean): void => {
+      const start = pendingStartRef.current;
+      if (!start || !shiftKey) return;
+      const adx = Math.abs(hit.x - start.x);
+      const adz = Math.abs(hit.z - start.z);
+      if (adx >= adz) {
+        // Constrain to horizontal (same Z as start)
+        hit.z = start.z;
+      } else {
+        // Constrain to vertical (same X as start)
+        hit.x = start.x;
+      }
+    },
+    [],
+  );
+
   // ── Mouse move for ghost + snap indicator ──────────────────
 
   const handleMouseMove = useCallback(
@@ -792,11 +1020,25 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         if (snapIndicatorRef.current) snapIndicatorRef.current.visible = false;
         clearGhost();
         doorSnapRef.current = null;
+        handleMouseMoveBoxSelect(e);
         return;
       }
 
       const hit = raycastGround(e);
       if (!hit) return;
+
+      // Ortho constraint: Shift locks to horizontal or vertical
+      applyOrthoConstraint(hit, e.shiftKey);
+
+      // For gridline tool, just show snap indicator and ghost (no wall snap)
+      if (tool === "gridline") {
+        if (snapIndicatorRef.current) {
+          snapIndicatorRef.current.position.set(hit.x, 0.02, hit.z);
+          snapIndicatorRef.current.visible = true;
+        }
+        updateGhostPreview(hit);
+        return;
+      }
 
       // For doors and windows, try snapping to a wall first
       if (tool === "door" || tool === "window") {
@@ -826,7 +1068,108 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       updateGhostPreview(hit);
     },
-    [raycastGround, raycastWalls, updateGhostPreview, clearGhost],
+    [
+      raycastGround,
+      raycastWalls,
+      updateGhostPreview,
+      clearGhost,
+      applyOrthoConstraint,
+    ],
+  );
+
+  // ── Box select handlers ─────────────────────────────────────
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (creationToolRef.current !== "none") return;
+    if (e.button !== 0) return; // left button only
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    boxSelectStartRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
+
+  const handleMouseMoveBoxSelect = useCallback((e: React.MouseEvent) => {
+    const start = boxSelectStartRef.current;
+    if (!start) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const dx = Math.abs(cx - start.x);
+    const dy = Math.abs(cy - start.y);
+    if (dx > boxSelectThreshold || dy > boxSelectThreshold) {
+      setBoxSelectRect({
+        x: Math.min(start.x, cx),
+        y: Math.min(start.y, cy),
+        width: Math.abs(cx - start.x),
+        height: Math.abs(cy - start.y),
+      });
+    }
+  }, []);
+
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      const start = boxSelectStartRef.current;
+      boxSelectStartRef.current = null;
+
+      if (!boxSelectRect) return;
+      setBoxSelectRect(null);
+      boxSelectUsedRef.current = true;
+
+      // Box select: find all authored elements whose center projects inside the box
+      const world = worldRef.current;
+      const container = containerRef.current;
+      if (!world || !container || !start) return;
+
+      const rect = container.getBoundingClientRect();
+      const camera = world.camera.three;
+      const w = rect.width;
+      const h = rect.height;
+
+      // Normalized box bounds (-1 to 1)
+      const bx = boxSelectRect.x;
+      const by = boxSelectRect.y;
+      const bw = boxSelectRect.width;
+      const bh = boxSelectRect.height;
+
+      const selected: SelectedElement[] = [];
+      for (const [id, mesh] of Array.from(
+        authoredMeshesRef.current.entries(),
+      )) {
+        const pos = new THREE.Vector3();
+        mesh.getWorldPosition(pos);
+        pos.project(camera);
+        // Convert to pixel coordinates
+        const sx = (pos.x * 0.5 + 0.5) * w;
+        const sy = (-pos.y * 0.5 + 0.5) * h;
+        if (sx >= bx && sx <= bx + bw && sy >= by && sy <= by + bh) {
+          selected.push({
+            expressID: 0,
+            globalId: id,
+            type: (mesh.userData.type as string) || mesh.name || "Element",
+            name: mesh.name || `Element #${mesh.id}`,
+            properties: extractProperties(mesh),
+          });
+        }
+      }
+
+      if (selected.length > 0) {
+        // Select the last one as primary, but also set all via onElementSelected
+        const ctrlKey = e.ctrlKey || e.metaKey;
+        // For box select, we report each element to build the full selection
+        // We use a batch approach: first element resets (unless ctrl), rest add
+        for (let i = 0; i < selected.length; i++) {
+          onElementSelected(selected[i], ctrlKey || i > 0);
+        }
+      } else if (!e.ctrlKey && !e.metaKey) {
+        onElementSelected(null);
+      }
+    },
+    [boxSelectRect, onElementSelected],
   );
 
   // ── Sync authored BimElements → scene ──────────────────────
@@ -855,7 +1198,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         existing.geometry.dispose();
       }
 
-      const material = ELEMENT_MATERIALS[el.type];
+      const material = getMaterialForElement(el);
       const mesh = buildMeshForElement(el, material, bimElements);
       mesh.name = el.name;
       mesh.userData = {
@@ -870,10 +1213,147 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [bimElements]);
 
+  // ── Sync gridlines → scene ─────────────────────────────────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const scene = world.scene.three;
+
+    // Remove stale gridline objects
+    const currentGlIds = new Set(gridLines.map((gl) => gl.id));
+    for (const [id, group] of Array.from(
+      gridLineObjectsRef.current.entries(),
+    )) {
+      if (!currentGlIds.has(id)) {
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+        gridLineObjectsRef.current.delete(id);
+      }
+    }
+
+    // Add or update gridlines
+    const GRIDLINE_COLOR = 0x06b6d4; // cyan
+    const EXTEND = 50; // extend line 50m beyond each end
+
+    for (const gl of gridLines) {
+      // Remove existing to rebuild
+      const existing = gridLineObjectsRef.current.get(gl.id);
+      if (existing) {
+        scene.remove(existing);
+        existing.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+      }
+
+      const group = new THREE.Group();
+      group.userData = { gridLineId: gl.id };
+
+      // Compute direction and extend the line
+      const dx = gl.end.x - gl.start.x;
+      const dz = gl.end.z - gl.start.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len < 0.01) continue;
+      const dirX = dx / len;
+      const dirZ = dz / len;
+
+      const extStart = new THREE.Vector3(
+        gl.start.x - dirX * EXTEND,
+        0.02,
+        gl.start.z - dirZ * EXTEND,
+      );
+      const extEnd = new THREE.Vector3(
+        gl.end.x + dirX * EXTEND,
+        0.02,
+        gl.end.z + dirZ * EXTEND,
+      );
+
+      // Dashed line
+      const lineMat = new THREE.LineDashedMaterial({
+        color: GRIDLINE_COLOR,
+        dashSize: 0.5,
+        gapSize: 0.2,
+        linewidth: 1,
+      });
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        extStart,
+        extEnd,
+      ]);
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.computeLineDistances();
+      group.add(line);
+
+      // Bubble at start end
+      const bubbleGeo = new THREE.CircleGeometry(0.4, 24);
+      const bubbleMat = new THREE.MeshBasicMaterial({
+        color: GRIDLINE_COLOR,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      });
+      const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+      bubble.position.set(gl.start.x, 0.03, gl.start.z);
+      bubble.rotation.x = -Math.PI / 2;
+      bubble.renderOrder = 1002;
+      group.add(bubble);
+
+      // Label sprite at start
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const fontSize = 32;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      const tw = ctx.measureText(gl.label).width;
+      canvas.width = Math.max(tw + 16, 48);
+      canvas.height = fontSize + 16;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = "#ffffff";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(gl.label, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.set(gl.start.x, 0.04, gl.start.z);
+      const aspect = canvas.width / canvas.height;
+      sprite.scale.set(aspect * 0.5, 0.5, 1);
+      sprite.renderOrder = 1003;
+      group.add(sprite);
+
+      scene.add(group);
+      gridLineObjectsRef.current.set(gl.id, group);
+    }
+
+    // Update label counter
+    if (gridLines.length > 0) {
+      gridLineLabelCounterRef.current = gridLines.length + 1;
+    }
+  }, [gridLines]);
+
   // ── Click handler ──────────────────────────────────────────
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      // Skip if box select just completed
+      if (boxSelectUsedRef.current) {
+        boxSelectUsedRef.current = false;
+        return;
+      }
+
       const world = worldRef.current;
       if (!world) return;
 
@@ -884,8 +1364,32 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         const hit = raycastGround(e);
         if (!hit) return;
 
+        // Ortho constraint: Shift locks to horizontal or vertical
+        applyOrthoConstraint(hit, e.shiftKey);
+
         const point = { x: hit.x, z: hit.z };
         const params = defaultParamsRef.current;
+        // Gridline creation (two-click, not a BIM element)
+        if (tool === "gridline") {
+          if (!pendingStartRef.current) {
+            pendingStartRef.current = point;
+            return;
+          }
+          const glStart = pendingStartRef.current;
+          pendingStartRef.current = null;
+          clearGhost();
+
+          const label = String(gridLineLabelCounterRef.current++);
+          const gl: GridLine = {
+            id: crypto.randomUUID(),
+            label,
+            start: glStart,
+            end: point,
+          };
+          onGridLineCreated?.(gl);
+          return;
+        }
+
         const needsTwoClicks =
           tool === "wall" ||
           tool === "slab" ||
@@ -1018,12 +1522,26 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [
       onElementSelected,
       onElementCreated,
-      highlightMesh,
       raycastGround,
       raycastWalls,
       clearGhost,
+      applyOrthoConstraint,
     ],
   );
+
+  // ── Sync multi-select highlights + dimension labels ─────────
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedElementIds triggers highlight sync
+  useEffect(() => {
+    const meshes: THREE.Mesh[] = [];
+    for (const id of selectedElementIds) {
+      const mesh =
+        authoredMeshesRef.current.get(id) ?? meshMapRef.current.get(id);
+      if (mesh) meshes.push(mesh);
+    }
+    highlightMeshes(meshes);
+    updateDimensionLabels(selectedElementIds);
+  }, [selectedElementIds, bimElements, highlightMeshes, updateDimensionLabels]);
 
   // ── Clear pending start when tool changes ──────────────────
 
@@ -1134,12 +1652,16 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           pendingStartRef.current = null;
           clearGhost();
+          boxSelectStartRef.current = null;
+          setBoxSelectRect(null);
           onElementSelected(null);
         }
       }}
@@ -1164,20 +1686,40 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       {/* Creation mode hint */}
       {creationTool !== "none" && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-lg bg-green-900/80 border border-green-700 text-green-300 text-xs backdrop-blur-sm">
-          {creationTool === "wall" ||
-          creationTool === "slab" ||
-          creationTool === "beam" ||
-          creationTool === "ceiling" ||
-          creationTool === "roof" ||
-          creationTool === "stair" ||
-          creationTool === "railing" ||
-          creationTool === "curtainWall" ||
-          creationTool === "duct" ||
-          creationTool === "pipe" ? (
+          {creationTool === "gridline" ? (
             pendingStartRef.current ? (
-              <span>Click to set end point &middot; Esc to cancel</span>
+              <span>
+                Click to set gridline end point &middot; Shift = ortho &middot;
+                Esc to cancel
+              </span>
             ) : (
-              <span>Click to set start point</span>
+              <span>Click to set gridline start point</span>
+            )
+          ) : creationTool === "wall" ||
+            creationTool === "slab" ||
+            creationTool === "beam" ||
+            creationTool === "ceiling" ||
+            creationTool === "roof" ||
+            creationTool === "stair" ||
+            creationTool === "railing" ||
+            creationTool === "curtainWall" ||
+            creationTool === "duct" ||
+            creationTool === "pipe" ? (
+            pendingStartRef.current ? (
+              <span>
+                Click to set end point &middot; Shift = ortho &middot; Esc to
+                cancel
+                {creationTool === "wall" && gridLines.length > 0
+                  ? ` · Tab = Align (${wallAlignMode})`
+                  : ""}
+              </span>
+            ) : (
+              <span>
+                Click to set start point
+                {creationTool === "wall" && gridLines.length > 0
+                  ? ` · Tab = Align (${wallAlignMode})`
+                  : ""}
+              </span>
             )
           ) : creationTool === "door" || creationTool === "window" ? (
             <span>Hover over a wall and click to place {creationTool}</span>
@@ -1185,6 +1727,21 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             <span>Click to place {creationTool}</span>
           )}
         </div>
+      )}
+
+      {/* Box select rectangle overlay */}
+      {boxSelectRect && (
+        <div
+          className="absolute pointer-events-none z-20"
+          style={{
+            left: boxSelectRect.x,
+            top: boxSelectRect.y,
+            width: boxSelectRect.width,
+            height: boxSelectRect.height,
+            border: "1px dashed rgba(59, 130, 246, 0.8)",
+            background: "rgba(59, 130, 246, 0.1)",
+          }}
+        />
       )}
 
       {!hasModel && !loading && bimElements.length === 0 && (

@@ -59,6 +59,16 @@ export interface Viewer3DHandle {
 
 // ── BIM Authoring ──────────────────────────────────────────────
 
+export type BimMaterialType =
+  | "concrete"
+  | "wood"
+  | "steel"
+  | "glass"
+  | "brick"
+  | "stone"
+  | "drywall"
+  | "aluminum";
+
 export type BimElementType =
   | "wall"
   | "column"
@@ -81,7 +91,7 @@ export type BimElementType =
   | "pipe"
   | "lightFixture";
 
-export type CreationTool = "none" | BimElementType;
+export type CreationTool = "none" | BimElementType | "gridline";
 
 export interface BimElementParams {
   wall: { height: number; thickness: number };
@@ -132,6 +142,8 @@ export interface BimElement {
   rotation?: number;
   /** ID of the wall this element is hosted on (doors) */
   hostWallId?: string;
+  /** Optional material override; falls back to type default if omitted */
+  material?: BimMaterialType;
 }
 
 /** Default parametric values for each element type */
@@ -163,6 +175,31 @@ export const DEFAULT_PARAMS: BimElementParams = {
   lightFixture: { width: 0.6, depth: 0.6 },
 };
 
+/** Default material for each element type (used when element.material is unset) */
+export const DEFAULT_ELEMENT_MATERIAL: Record<BimElementType, BimMaterialType> =
+  {
+    wall: "concrete",
+    column: "concrete",
+    slab: "concrete",
+    door: "wood",
+    window: "glass",
+    beam: "steel",
+    ceiling: "drywall",
+    roof: "wood",
+    stair: "concrete",
+    railing: "steel",
+    curtainWall: "glass",
+    table: "wood",
+    chair: "wood",
+    shelving: "wood",
+    desk: "wood",
+    toilet: "drywall",
+    sink: "drywall",
+    duct: "aluminum",
+    pipe: "steel",
+    lightFixture: "aluminum",
+  };
+
 // ── Undo/Redo ──────────────────────────────────────────────────
 
 export type UndoAction =
@@ -175,6 +212,7 @@ export type UndoAction =
       before: Partial<BimElement>;
       after: Partial<BimElement>;
     }
+  | { type: "batchAdd"; elements: BimElement[] }
   | { type: "addMarkup"; markup: Markup }
   | { type: "deleteMarkup"; markup: Markup }
   | {
@@ -183,6 +221,107 @@ export type UndoAction =
       before: Partial<Markup>;
       after: Partial<Markup>;
     };
+
+// ── Multi-Window Views ──────────────────────────────────────────
+
+export type ViewPaneType =
+  | "3d"
+  | "plan"
+  | "front-elevation"
+  | "back-elevation"
+  | "left-elevation"
+  | "right-elevation"
+  | "section"
+  | "2d-sheet";
+
+export interface ViewPane {
+  id: string;
+  type: ViewPaneType;
+  title: string;
+}
+
+export type ViewLayout = "single" | "2-up" | "3-up" | "4-up";
+
+export const VIEW_PANE_LABELS: Record<ViewPaneType, string> = {
+  "3d": "3D View",
+  plan: "Plan View",
+  "front-elevation": "Front Elevation",
+  "back-elevation": "Back Elevation",
+  "left-elevation": "Left Elevation",
+  "right-elevation": "Right Elevation",
+  section: "Section",
+  "2d-sheet": "2D Sheet",
+};
+
+export const DEFAULT_PANES: ViewPane[] = [
+  { id: "main-3d", type: "3d", title: "3D View" },
+];
+
+// ── Camera Presets for Orthographic Views ────────────────────
+
+export interface CameraPreset {
+  position: [number, number, number];
+  target: [number, number, number];
+  orthographic: boolean;
+  /** Optional clipping plane for section views */
+  sectionPlane?: {
+    normal: [number, number, number];
+    point: [number, number, number];
+  };
+}
+
+export const CAMERA_PRESETS: Record<string, CameraPreset> = {
+  "3d": {
+    position: [12, 6, 8],
+    target: [0, 0, -10],
+    orthographic: false,
+  },
+  plan: {
+    position: [0, 50, 0],
+    target: [0, 0, 0],
+    orthographic: true,
+  },
+  "front-elevation": {
+    position: [0, 5, 50],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "back-elevation": {
+    position: [0, 5, -50],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "left-elevation": {
+    position: [-50, 5, 0],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  "right-elevation": {
+    position: [50, 5, 0],
+    target: [0, 5, 0],
+    orthographic: true,
+  },
+  section: {
+    position: [0, 5, 50],
+    target: [0, 5, 0],
+    orthographic: true,
+    sectionPlane: {
+      normal: [0, 0, -1],
+      point: [0, 0, 0],
+    },
+  },
+};
+
+// ── Gridlines (user-created reference lines) ────────────────
+
+export interface GridLine {
+  id: string;
+  label: string;
+  start: { x: number; z: number };
+  end: { x: number; z: number };
+}
+
+export type WallAlignMode = "left" | "center" | "right";
 
 // ── Snap & Grid ──────────────────────────────────────────────
 
