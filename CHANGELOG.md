@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Status bar** — updated keyboard shortcuts hint to show multi-select shortcut (Ctrl+Click); shows count of selected elements when more than one is selected
 
 ### Added
+- **AI Image-to-BIM** — Upload a floor plan image (photo, sketch, or CAD drawing) and generate walls, doors, and windows using Claude's vision API; includes API key management, image preview, scale hints, element preview before applying, and full batch undo/redo support; accessible from the "AI" group in the Architecture ribbon tab
 - **Multi-window views** — Revit-style multi-pane viewport system supporting up to 4 simultaneous views; layout presets (Single, 2-Up, 3-Up, 4-Up) accessible from the View ribbon tab or keyboard shortcuts 1-4; each pane can independently be set to 3D View, Plan View, Front/Back/Left/Right Elevation, or 2D Sheet via a dropdown in the pane header; panes can be closed individually and new views added from the "Add View" ribbon group
 - **Project persistence (auto-save)** — all BIM elements, markups, and levels are automatically saved to IndexedDB and restored on page load; no more losing work on browser refresh
 - **Project export/import** — export projects as JSON files and re-import them; New/Open/Save buttons in the Quick Access bar

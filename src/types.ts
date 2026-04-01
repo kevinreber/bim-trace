@@ -173,6 +173,7 @@ export type UndoAction =
       before: Partial<BimElement>;
       after: Partial<BimElement>;
     }
+  | { type: "batchAdd"; elements: BimElement[] }
   | { type: "addMarkup"; markup: Markup }
   | { type: "deleteMarkup"; markup: Markup }
   | {
