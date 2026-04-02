@@ -30,6 +30,7 @@ interface ProjectBrowserProps {
   activeLevel: string;
   onActiveLevelChange: (id: string) => void;
   onLevelsChange: (levels: Level[]) => void;
+  onLevelNavigate?: (levelId: string) => void;
 }
 
 interface PropertiesPanelProps {
@@ -158,11 +159,13 @@ function LevelManager({
   activeLevel,
   onActiveLevelChange,
   onLevelsChange,
+  onLevelNavigate,
 }: {
   levels: Level[];
   activeLevel: string;
   onActiveLevelChange: (id: string) => void;
   onLevelsChange: (levels: Level[]) => void;
+  onLevelNavigate?: (levelId: string) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -268,6 +271,26 @@ function LevelManager({
               )}
             </button>
 
+            {onLevelNavigate && (
+              <button
+                type="button"
+                onClick={() => onLevelNavigate(level.id)}
+                className="flex items-center justify-center w-6 shrink-0"
+                style={{ color: "var(--text-muted)" }}
+                title={`Fly to ${level.name}`}
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path d="M8 3 L8 13 M5 6 L8 3 L11 6" />
+                </svg>
+              </button>
+            )}
+
             <input
               type="number"
               value={level.height}
@@ -342,6 +365,7 @@ export function ProjectBrowser({
   activeLevel,
   onActiveLevelChange,
   onLevelsChange,
+  onLevelNavigate,
 }: ProjectBrowserProps) {
   const [activeTab, setActiveTab] = useState<BrowserTab>("tree");
 
@@ -481,6 +505,7 @@ export function ProjectBrowser({
             activeLevel={activeLevel}
             onActiveLevelChange={onActiveLevelChange}
             onLevelsChange={onLevelsChange}
+            onLevelNavigate={onLevelNavigate}
           />
         )}
       </div>

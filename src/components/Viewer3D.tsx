@@ -63,6 +63,7 @@ interface Viewer3DProps {
   defaultParams: typeof DEFAULT_PARAMS;
   snapEnabled?: boolean;
   gridSize?: GridSize;
+  selectedElements?: SelectedElement[];
   gridLines?: GridLine[];
   onGridLineCreated?: (gl: GridLine) => void;
   wallAlignMode?: WallAlignMode;
@@ -117,6 +118,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     defaultParams,
     snapEnabled = false,
     gridSize = 0.5,
+    selectedElements = [],
     gridLines = [],
     onGridLineCreated,
     wallAlignMode = "center",
@@ -155,6 +157,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+
+
 
   // Snap refs
   const snapEnabledRef = useRef(snapEnabled);
@@ -283,7 +287,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     const world = worldRef.current;
     if (!world) return;
     const scene = world.scene.three;
-
     for (const h of highlightedRef.current) {
       scene.remove(h);
       h.geometry.dispose();
@@ -296,7 +299,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     for (const mesh of meshes) {
       const highlight = new THREE.Mesh(mesh.geometry, highlightMat);
       if (mesh.parent && mesh.parent !== scene) {
-        // Nested mesh (IFC model child) — decompose world matrix
         mesh.updateWorldMatrix(true, false);
         const pos = new THREE.Vector3();
         const quat = new THREE.Quaternion();
@@ -306,7 +308,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         highlight.quaternion.copy(quat);
         highlight.scale.copy(scl);
       } else {
-        // Root-level mesh (authored element) — direct copy
         highlight.position.copy(mesh.position);
         highlight.rotation.copy(mesh.rotation);
         highlight.scale.copy(mesh.scale);
@@ -491,6 +492,19 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           authoredMeshesRef.current.get(globalId);
         if (!mesh) return;
         flyToMesh(mesh);
+      },
+      flyToLevel(height: number) {
+        const world = worldRef.current;
+        if (!world) return;
+        world.camera.controls.setLookAt(
+          12,
+          height + 8,
+          12,
+          0,
+          height,
+          0,
+          true,
+        );
       },
     }),
     [flyToMesh],

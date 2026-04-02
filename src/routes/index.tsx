@@ -269,6 +269,17 @@ function Home() {
     [bimElements],
   );
 
+  // Story navigation: fly camera to selected level height
+  const handleLevelNavigate = useCallback(
+    (levelId: string) => {
+      const level = levels.find((l) => l.id === levelId);
+      if (!level) return;
+      setActiveLevel(levelId);
+      viewer3DRef.current?.flyToLevel(level.height);
+    },
+    [levels],
+  );
+
   const handleMarkupLink = useCallback(
     (markupId: string) => {
       setMarkups((prev) =>
@@ -771,6 +782,7 @@ function Home() {
             activeLevel={activeLevel}
             onActiveLevelChange={setActiveLevel}
             onLevelsChange={setLevels}
+            onLevelNavigate={handleLevelNavigate}
           />
         </div>
 

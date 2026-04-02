@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Multi-select** — Ctrl+click to add/remove elements from selection; box/marquee select by click-dragging in the 3D viewport to select all elements within the rectangle; multi-select highlights all selected elements in the Project Browser tree and shows a selection summary with type counts in the Properties panel
 - **Bulk delete** — delete all selected elements at once via Delete/Backspace key or the bulk delete button in the Properties panel; arrow key movement now applies to all selected elements simultaneously
 - **Dimension labels** — selected elements display floating dimension labels in the 3D viewport showing key measurements (length, height, width, depth) as canvas-textured sprites positioned above each element
+- **Story navigation** — click the arrow icon next to any level in the Levels tab of the Project Browser to fly the 3D camera to that story's height
 
 ### Changed
 - **Status bar** — updated keyboard shortcuts hint to show multi-select shortcut (Ctrl+Click); shows count of selected elements when more than one is selected
