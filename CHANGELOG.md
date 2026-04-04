@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Room element** — new two-click Room element type for defining enclosed spaces; displays a semi-transparent blue floor area with wireframe volume outline; Properties panel shows computed Area (m²), Perimeter (m), and Volume (m³); accessible from Architecture ribbon's "Room & Area" group or Shift+M shortcut
+- **3D Dimension tool** — two-click linear measurement tool in the 3D viewport; creates persistent yellow dimension lines with distance labels, extension ticks at endpoints, and midpoint measurement text; accessible from Annotate ribbon's "3D Measure" group
+- **Visibility/Graphics overrides** — per-category show/hide toggles in the new Manage ribbon tab; click any element type badge to toggle visibility; supports wireframe and transparency control; hidden categories are reflected in real-time in the 3D viewport
+- **Right-click context menus** — context-sensitive right-click menus on 3D elements with Select, Copy, Select All (by type), Hide Category, and Delete actions; includes keyboard shortcut hints and danger styling for destructive actions
+- **Revit-style tooltips** — hover tooltips on all ribbon toolbar buttons showing the tool name and keyboard shortcut; styled to match Revit's tooltip appearance with title and shortcut hint
+- **Saved/Named camera views** — save and restore camera positions via the Manage ribbon tab; saved views appear as clickable buttons; right-click to delete a saved view
+- **Element grouping** — group multiple selected elements together via the Modify ribbon tab; grouped elements share a groupId; ungroup to remove the association; Group button requires 2+ selected elements
+- **Schedule views** — auto-generated tabular schedules for Door, Window, Room, Wall, and All element types; accessible from the Manage ribbon tab; shows element properties in a sortable table with type-specific columns (area for rooms, length for walls, host wall for doors/windows)
+- **Manage ribbon tab** — new 5th ribbon tab housing Visibility/Graphics, Saved Views, and Schedules tool groups
+- **Room shortcuts** — Shift+M keyboard shortcut for room creation tool
+
 ### Fixed
 - **Plan View projection** — Plan View now uses true orthographic projection instead of perspective, making elements appear flat/2D as expected in architectural plan views
 - **Elevation view projection** — All elevation views (Front, Back, Left, Right) now use orthographic projection for accurate 2D representation

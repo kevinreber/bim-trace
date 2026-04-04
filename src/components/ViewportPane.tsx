@@ -2,7 +2,9 @@ import { useRef } from "react";
 import type {
   AnnotationTool,
   BimElement,
+  CategoryVisibility,
   CreationTool,
+  Dimension3D,
   GridLine,
   GridSize,
   Markup,
@@ -47,6 +49,11 @@ interface ViewportPaneProps {
   onMarkupCreated: (markup: Omit<Markup, "id" | "createdAt">) => void;
   currentPage: number;
   selectedElement: SelectedElement | null;
+  // New features
+  categoryVisibility?: Record<string, CategoryVisibility>;
+  dimensions3D?: Dimension3D[];
+  onDimension3DCreated?: (dim: Dimension3D) => void;
+  onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
 }
 
 const VIEW_TYPE_OPTIONS: { value: ViewPaneType; label: string }[] = [
@@ -160,6 +167,10 @@ export default function ViewportPane({
   onMarkupCreated,
   currentPage,
   selectedElement,
+  categoryVisibility,
+  dimensions3D,
+  onDimension3DCreated,
+  onContextMenu,
 }: ViewportPaneProps) {
   const localPdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const effectivePdfRef = pdfCanvasRef ?? localPdfCanvasRef;
@@ -226,6 +237,10 @@ export default function ViewportPane({
             onGridLineCreated={onGridLineCreated}
             wallAlignMode={wallAlignMode}
             cameraPreset={cameraPreset}
+            categoryVisibility={categoryVisibility}
+            dimensions3D={dimensions3D}
+            onDimension3DCreated={onDimension3DCreated}
+            onContextMenu={onContextMenu}
           />
         ) : (
           <div className="h-full flex flex-col">

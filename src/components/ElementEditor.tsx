@@ -33,6 +33,7 @@ const TYPE_LABELS: Record<BimElementType, string> = {
   duct: "Duct",
   pipe: "Pipe",
   lightFixture: "Light Fixture",
+  room: "Room",
 };
 
 const MATERIAL_LABELS: Record<BimMaterialType, string> = {
@@ -285,6 +286,9 @@ const PARAM_FIELDS: Record<BimElementType, ParamField[]> = {
     { key: "width", label: "Width", unit: "m", min: 0.2, max: 2, step: 0.1 },
     { key: "depth", label: "Depth", unit: "m", min: 0.2, max: 2, step: 0.1 },
   ],
+  room: [
+    { key: "height", label: "Height", unit: "m", min: 1, max: 20, step: 0.1 },
+  ],
 };
 
 export default function ElementEditor({
@@ -501,6 +505,78 @@ export default function ElementEditor({
         )}
       </div>
 
+      {/* Computed metrics for rooms */}
+      {element.type === "room" && (
+        <div className="prop-section">
+          <div className="prop-section-header" style={{ cursor: "default" }}>
+            <span className="text-[8px]">▼</span>
+            Computed
+          </div>
+          <div className="prop-row">
+            <span className="prop-label">Area</span>
+            <div className="prop-value">
+              <span
+                className="prop-input"
+                style={{
+                  background: "none",
+                  color: "var(--accent-blue)",
+                  textAlign: "right",
+                  display: "block",
+                }}
+              >
+                {(
+                  Math.abs(element.end.x - element.start.x) *
+                  Math.abs(element.end.z - element.start.z)
+                ).toFixed(2)}
+              </span>
+            </div>
+            <span className="prop-unit">m²</span>
+          </div>
+          <div className="prop-row">
+            <span className="prop-label">Perimeter</span>
+            <div className="prop-value">
+              <span
+                className="prop-input"
+                style={{
+                  background: "none",
+                  color: "var(--accent-blue)",
+                  textAlign: "right",
+                  display: "block",
+                }}
+              >
+                {(
+                  2 *
+                  (Math.abs(element.end.x - element.start.x) +
+                    Math.abs(element.end.z - element.start.z))
+                ).toFixed(2)}
+              </span>
+            </div>
+            <span className="prop-unit">m</span>
+          </div>
+          <div className="prop-row">
+            <span className="prop-label">Volume</span>
+            <div className="prop-value">
+              <span
+                className="prop-input"
+                style={{
+                  background: "none",
+                  color: "var(--accent-blue)",
+                  textAlign: "right",
+                  display: "block",
+                }}
+              >
+                {(
+                  Math.abs(element.end.x - element.start.x) *
+                  Math.abs(element.end.z - element.start.z) *
+                  (params.height ?? 3)
+                ).toFixed(2)}
+              </span>
+            </div>
+            <span className="prop-unit">m³</span>
+          </div>
+        </div>
+      )}
+
       {/* Location section (read-only, like Revit) */}
       <div className="prop-section">
         <button
@@ -509,7 +585,7 @@ export default function ElementEditor({
           onClick={() => toggleSection("location")}
         >
           <span className="text-[8px]">
-            {expandedSections.location ? "▼" : "▶"}
+            {expandedSections.location ? "\u25BC" : "\u25B6"}
           </span>
           Location
         </button>

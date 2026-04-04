@@ -74,6 +74,12 @@ export const ELEMENT_MATERIALS: Record<
     roughness: 0.3,
     metalness: 0.2,
   }),
+  room: new THREE.MeshStandardMaterial({
+    color: 0x93c5fd,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.2,
+  }),
 };
 
 // ── Material Library ──────────────────────────────────────────
@@ -867,6 +873,49 @@ export function buildLightFixtureMesh(
   return mesh;
 }
 
+// ── Room ─────────────────────────────────────────────────────
+
+export function buildRoomMesh(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  height: number,
+  level: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const dx = Math.abs(end.x - start.x);
+  const dz = Math.abs(end.z - start.z);
+  const w = Math.max(dx, 0.1);
+  const d = Math.max(dz, 0.1);
+  const cx = (start.x + end.x) / 2;
+  const cz = (start.z + end.z) / 2;
+
+  // Semi-transparent colored floor slab for the room
+  const roomMat = (material as THREE.MeshStandardMaterial).clone();
+  roomMat.color = new THREE.Color(0x93c5fd);
+  roomMat.transparent = true;
+  roomMat.opacity = 0.18;
+  roomMat.side = THREE.DoubleSide;
+  roomMat.depthWrite = false;
+
+  const geo = new THREE.BoxGeometry(w, 0.02, d);
+  const mesh = new THREE.Mesh(geo, roomMat);
+  mesh.position.set(cx, level + 0.01, cz);
+  mesh.renderOrder = 10;
+
+  // Add a border wireframe to outline the room
+  const edgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, height, d));
+  const edgesMat = new THREE.LineBasicMaterial({
+    color: 0x3b82f6,
+    transparent: true,
+    opacity: 0.4,
+  });
+  const edges = new THREE.LineSegments(edgesGeo, edgesMat);
+  edges.position.set(0, height / 2 - 0.01, 0);
+  mesh.add(edges);
+
+  return mesh;
+}
+
 // ── Wall openings ─────────────────────────────────────────────
 
 export function computeWallOpenings(
@@ -1136,6 +1185,10 @@ export function buildMeshForElement(
         el.level,
         material,
       );
+    }
+    case "room": {
+      const p = el.params as { height: number };
+      return buildRoomMesh(el.start, el.end, p.height, el.level, material);
     }
   }
 }

@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AiGenerateModal from "@/components/AiGenerateModal";
+import ContextMenu from "@/components/ContextMenu";
 import RibbonToolbar from "@/components/RibbonToolbar";
+import ScheduleModal from "@/components/ScheduleModal";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
 import ViewportPane from "@/components/ViewportPane";
 import {
@@ -15,11 +17,16 @@ import {
 import type {
   AnnotationTool,
   BimElement,
+  CategoryVisibility,
   CreationTool,
+  Dimension3D,
+  ElementGroup,
   GridLine,
   GridSize,
   Level,
   Markup,
+  SavedView,
+  ScheduleType,
   SelectedElement,
   SpatialNode,
   UndoAction,
@@ -81,6 +88,30 @@ function Home() {
 
   // AI Generate modal
   const [aiModalOpen, setAiModalOpen] = useState(false);
+
+  // 3D Dimension lines
+  const [dimensions3D, setDimensions3D] = useState<Dimension3D[]>([]);
+
+  // Visibility / Graphics overrides
+  const [categoryVisibility, setCategoryVisibility] = useState<
+    Record<string, CategoryVisibility>
+  >({});
+
+  // Saved views
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+
+  // Element groups
+  const [groups, setGroups] = useState<ElementGroup[]>([]);
+
+  // Schedule modal
+  const [scheduleType, setScheduleType] = useState<ScheduleType | null>(null);
+
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    elementId: string | null;
+  } | null>(null);
 
   // Persistence: loaded flag
   const [projectLoaded, setProjectLoaded] = useState(false);
@@ -182,6 +213,10 @@ function Home() {
     setLevels(DEFAULT_LEVELS);
     setActiveLevel("ground");
     setGridLines([]);
+    setDimensions3D([]);
+    setCategoryVisibility({});
+    setSavedViews([]);
+    setGroups([]);
     setSelectedElement(null);
     setSelectedElementIds([]);
     undoStackRef.current = [];
@@ -474,6 +509,138 @@ function Home() {
     [activeLevelHeight, showToast],
   );
 
+  // 3D Dimension handler
+  const handleDimension3DCreated = useCallback(
+    (dim: Dimension3D) => {
+      setDimensions3D((prev) => [...prev, dim]);
+      showToast(`Dimension: ${dim.distance.toFixed(2)}m`, "info");
+    },
+    [showToast],
+  );
+
+  // Category visibility handler
+  const handleCategoryVisibilityChange = useCallback(
+    (type: string, vis: Partial<CategoryVisibility>) => {
+      setCategoryVisibility((prev) => {
+        const current = prev[type] ?? {
+          visible: true,
+          wireframe: false,
+          transparency: 0,
+        };
+        return { ...prev, [type]: { ...current, ...vis } };
+      });
+    },
+    [],
+  );
+
+  // Saved views handlers
+  const handleSaveView = useCallback(() => {
+    const name = `View ${savedViews.length + 1}`;
+    const view: SavedView = {
+      id: crypto.randomUUID(),
+      name,
+      position: [12, 6, 8],
+      target: [0, 0, -10],
+      orthographic: false,
+    };
+    setSavedViews((prev) => [...prev, view]);
+    showToast(`Saved view: ${name}`, "success");
+  }, [savedViews.length, showToast]);
+
+  const handleLoadView = useCallback(
+    (view: SavedView) => {
+      viewer3DRef.current?.flyToLevel(0);
+      showToast(`Loaded view: ${view.name}`, "info");
+    },
+    [showToast],
+  );
+
+  const handleDeleteView = useCallback(
+    (id: string) => {
+      setSavedViews((prev) => prev.filter((v) => v.id !== id));
+      showToast("View deleted", "info");
+    },
+    [showToast],
+  );
+
+  // Grouping handlers
+  const handleGroupSelected = useCallback(() => {
+    if (selectedElementIds.length < 2) return;
+    const groupId = crypto.randomUUID();
+    const group: ElementGroup = {
+      id: groupId,
+      name: `Group ${groups.length + 1}`,
+      elementIds: [...selectedElementIds],
+    };
+    setGroups((prev) => [...prev, group]);
+    setBimElements((prev) =>
+      prev.map((el) =>
+        selectedElementIds.includes(el.id) ? { ...el, groupId } : el,
+      ),
+    );
+    showToast(`Grouped ${selectedElementIds.length} elements`, "success");
+  }, [selectedElementIds, groups.length, showToast]);
+
+  const handleUngroupSelected = useCallback(() => {
+    if (selectedElementIds.length === 0) return;
+    const el = bimElements.find((e) => e.id === selectedElementIds[0]);
+    if (!el?.groupId) return;
+    const gid = el.groupId;
+    setGroups((prev) => prev.filter((g) => g.id !== gid));
+    setBimElements((prev) =>
+      prev.map((e) => (e.groupId === gid ? { ...e, groupId: undefined } : e)),
+    );
+    showToast("Ungrouped elements", "info");
+  }, [selectedElementIds, bimElements, showToast]);
+
+  // Context menu handler
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, elementId: string | null) => {
+      setContextMenu({ x: e.clientX, y: e.clientY, elementId });
+    },
+    [],
+  );
+
+  const handleContextMenuCopy = useCallback(
+    (id: string) => {
+      const el = bimElements.find((e) => e.id === id);
+      if (!el) return;
+      const newEl: BimElement = {
+        ...el,
+        id: crypto.randomUUID(),
+        name: `${el.name} (copy)`,
+        start: { x: el.start.x + 1, z: el.start.z + 1 },
+        end: { x: el.end.x + 1, z: el.end.z + 1 },
+        params: { ...el.params },
+      };
+      handleElementCreated(newEl);
+    },
+    [bimElements, handleElementCreated],
+  );
+
+  const handleContextMenuSelectAll = useCallback(
+    (type: string) => {
+      const ids = bimElements
+        .filter((el) => el.type === type)
+        .map((el) => el.id);
+      setSelectedElementIds(ids);
+      if (ids.length > 0) {
+        const el = bimElements.find((e) => e.id === ids[0]);
+        if (el) {
+          setSelectedElement({
+            expressID: 0,
+            globalId: el.id,
+            type: el.type,
+            name: el.name,
+            properties: el.params as Record<string, string | number | boolean>,
+          });
+        }
+      }
+      showToast(`Selected ${ids.length} ${type}s`, "info");
+    },
+    [bimElements, showToast],
+  );
+
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
     const action = undoStackRef.current.pop();
@@ -703,6 +870,7 @@ function Home() {
           U: "duct",
           P: "pipe",
           F: "lightFixture",
+          M: "room",
         };
         const tool = toolMap[e.key.toUpperCase()];
         if (tool) {
@@ -762,6 +930,17 @@ function Home() {
         bimElements={bimElements}
         onBimElementUpdate={handleBimElementUpdate}
         onAiGenerate={() => setAiModalOpen(true)}
+        categoryVisibility={categoryVisibility}
+        onCategoryVisibilityChange={handleCategoryVisibilityChange}
+        savedViews={savedViews}
+        onSaveView={handleSaveView}
+        onLoadView={handleLoadView}
+        onDeleteView={handleDeleteView}
+        groups={groups}
+        onGroupSelected={handleGroupSelected}
+        onUngroupSelected={handleUngroupSelected}
+        selectedElementIds={selectedElementIds}
+        onOpenSchedule={(type) => setScheduleType(type)}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
@@ -842,6 +1021,10 @@ function Home() {
                   onMarkupCreated={handleMarkupCreated}
                   currentPage={currentPage}
                   selectedElement={selectedElement}
+                  categoryVisibility={categoryVisibility}
+                  dimensions3D={dimensions3D}
+                  onDimension3DCreated={handleDimension3DCreated}
+                  onContextMenu={handleContextMenu}
                 />
               );
             })}
@@ -965,6 +1148,33 @@ function Home() {
         onClose={() => setAiModalOpen(false)}
         onApply={handleAiBatchAdd}
       />
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          elementId={contextMenu.elementId}
+          bimElements={bimElements}
+          onClose={() => setContextMenu(null)}
+          onDelete={handleBimElementDelete}
+          onCopy={handleContextMenuCopy}
+          onSelect={handleSelectElement}
+          onHideCategory={(type) =>
+            handleCategoryVisibilityChange(type, { visible: false })
+          }
+          onSelectAll={handleContextMenuSelectAll}
+        />
+      )}
+
+      {/* Schedule Modal */}
+      {scheduleType && (
+        <ScheduleModal
+          type={scheduleType}
+          bimElements={bimElements}
+          onClose={() => setScheduleType(null)}
+        />
+      )}
     </div>
   );
 }

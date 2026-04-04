@@ -2,9 +2,14 @@ import { useState } from "react";
 import type {
   AnnotationTool,
   BimElement,
+  BimElementType,
+  CategoryVisibility,
   CreationTool,
+  ElementGroup,
   GridSize,
   Level,
+  SavedView,
+  ScheduleType,
   SelectedElement,
   ViewLayout,
   ViewPane,
@@ -51,9 +56,27 @@ interface RibbonToolbarProps {
   onBimElementUpdate: (id: string, updates: Partial<BimElement>) => void;
   // AI
   onAiGenerate: () => void;
+  // Visibility / Graphics
+  categoryVisibility: Record<string, CategoryVisibility>;
+  onCategoryVisibilityChange: (
+    type: string,
+    vis: Partial<CategoryVisibility>,
+  ) => void;
+  // Saved views
+  savedViews: SavedView[];
+  onSaveView: () => void;
+  onLoadView: (view: SavedView) => void;
+  onDeleteView: (id: string) => void;
+  // Grouping
+  groups: ElementGroup[];
+  onGroupSelected: () => void;
+  onUngroupSelected: () => void;
+  selectedElementIds: string[];
+  // Schedule
+  onOpenSchedule: (type: ScheduleType) => void;
 }
 
-type RibbonTab = "architecture" | "annotate" | "view" | "modify";
+type RibbonTab = "architecture" | "annotate" | "view" | "modify" | "manage";
 
 /* ── Tool definitions ─────────────────────────────────────────────── */
 
@@ -118,6 +141,10 @@ const ARCHITECTURE_GROUPS: ToolGroupDef[] = [
     ],
   },
   {
+    label: "Room & Area",
+    tools: [{ id: "room", label: "Room", shortcut: "M" }],
+  },
+  {
     label: "Reference",
     tools: [{ id: "gridline", label: "Gridline" }],
   },
@@ -146,6 +173,10 @@ const ANNOTATE_GROUPS: ToolGroupDef[] = [
   {
     label: "Measure",
     tools: [{ id: "measurement", label: "Measure" }],
+  },
+  {
+    label: "3D Measure",
+    tools: [{ id: "dimension3d", label: "3D Dim" }],
   },
 ];
 
@@ -442,6 +473,61 @@ function ToolIcon({ id }: { id: string }) {
         </text>
       </svg>
     ),
+    room: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <rect
+          x="3"
+          y="6"
+          width="18"
+          height="14"
+          rx="1"
+          fill="currentColor"
+          opacity="0.1"
+        />
+        <rect x="3" y="6" width="18" height="14" rx="1" />
+        <text
+          x="12"
+          y="15"
+          textAnchor="middle"
+          fontSize="6"
+          fill="currentColor"
+          stroke="none"
+        >
+          RM
+        </text>
+      </svg>
+    ),
+    dimension3d: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <line x1="4" y1="16" x2="20" y2="16" stroke="#fbbf24" />
+        <line x1="4" y1="12" x2="4" y2="20" stroke="#fbbf24" />
+        <line x1="20" y1="12" x2="20" y2="20" stroke="#fbbf24" />
+        <polyline points="6,15 4,16 6,17" fill="#fbbf24" stroke="#fbbf24" />
+        <polyline points="18,15 20,16 18,17" fill="#fbbf24" stroke="#fbbf24" />
+        <text
+          x="12"
+          y="12"
+          textAnchor="middle"
+          fontSize="7"
+          fill="#fbbf24"
+          stroke="none"
+        >
+          3D
+        </text>
+      </svg>
+    ),
     // Annotation icons
     cloud: (
       <svg
@@ -589,6 +675,52 @@ function ToolIcon({ id }: { id: string }) {
 
 /* ── Ribbon Tab Panels ────────────────────────────────────────────── */
 
+/* ── Revit-style Tooltip ──────────────────────────────────────────── */
+
+function RibbonTooltip({
+  tool,
+  children,
+}: {
+  tool: ToolDef;
+  children: React.ReactNode;
+}) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={(e) => {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 4 });
+        setShow(true);
+      }}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <div
+          className="ribbon-tooltip"
+          style={{
+            position: "fixed",
+            left: pos.x,
+            top: pos.y,
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+          }}
+        >
+          <div className="ribbon-tooltip-title">{tool.label}</div>
+          {tool.shortcut && (
+            <div className="ribbon-tooltip-shortcut">
+              Shortcut: Shift+{tool.shortcut}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RibbonGroup({
   group,
   activeTool,
@@ -602,20 +734,16 @@ function RibbonGroup({
     <div className="ribbon-group">
       <div className="ribbon-group-tools">
         {group.tools.map((tool) => (
-          <button
-            key={tool.id}
-            type="button"
-            onClick={() => onToolSelect(tool.id)}
-            className={`ribbon-tool-btn ${activeTool === tool.id ? "active" : ""}`}
-            title={
-              tool.shortcut
-                ? `${tool.label} (Shift+${tool.shortcut})`
-                : tool.label
-            }
-          >
-            <ToolIcon id={tool.id} />
-            <span className="ribbon-tool-label">{tool.label}</span>
-          </button>
+          <RibbonTooltip key={tool.id} tool={tool}>
+            <button
+              type="button"
+              onClick={() => onToolSelect(tool.id)}
+              className={`ribbon-tool-btn ${activeTool === tool.id ? "active" : ""}`}
+            >
+              <ToolIcon id={tool.id} />
+              <span className="ribbon-tool-label">{tool.label}</span>
+            </button>
+          </RibbonTooltip>
         ))}
       </div>
       <div className="ribbon-group-label">{group.label}</div>
@@ -649,6 +777,17 @@ export default function RibbonToolbar({
   bimElements,
   onBimElementUpdate,
   onAiGenerate,
+  categoryVisibility,
+  onCategoryVisibilityChange,
+  savedViews,
+  onSaveView,
+  onLoadView,
+  onDeleteView,
+  groups,
+  onGroupSelected,
+  onUngroupSelected,
+  selectedElementIds,
+  onOpenSchedule,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
 
@@ -728,6 +867,12 @@ export default function RibbonToolbar({
   };
 
   const handleAnnotationTool = (id: string) => {
+    // dimension3d uses the creation tool system, not annotation
+    if (id === "dimension3d") {
+      onCreationToolChange("dimension3d");
+      onAnnotationToolChange("select");
+      return;
+    }
     onAnnotationToolChange(id as AnnotationTool);
     onCreationToolChange("none");
   };
@@ -835,6 +980,7 @@ export default function RibbonToolbar({
             { id: "architecture", label: "Architecture" },
             { id: "annotate", label: "Annotate" },
             { id: "view", label: "View" },
+            { id: "manage", label: "Manage" },
           ] as { id: RibbonTab; label: string }[]
         ).map((tab) => (
           <button
@@ -1054,6 +1200,61 @@ export default function RibbonToolbar({
                 </button>
               </div>
               <div className="ribbon-group-label">Transform</div>
+            </div>
+
+            {/* Group/Ungroup */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={onGroupSelected}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElementIds.length < 2}
+                  title="Group selected elements (Ctrl+G)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="2" y="2" width="8" height="8" rx="1" />
+                    <rect x="14" y="14" width="8" height="8" rx="1" />
+                    <path d="M10 6 L14 6 M6 10 L6 14" strokeDasharray="2 1" />
+                  </svg>
+                  <span className="ribbon-tool-label">Group</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onUngroupSelected}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement?.groupId}
+                  title="Ungroup selected element"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="2" y="2" width="8" height="8" rx="1" />
+                    <rect x="14" y="14" width="8" height="8" rx="1" />
+                    <line x1="10" y1="6" x2="14" y2="6" strokeDasharray="2 1" />
+                    <line
+                      x1="8"
+                      y1="4"
+                      x2="16"
+                      y2="12"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                    />
+                  </svg>
+                  <span className="ribbon-tool-label">Ungroup</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Group</div>
             </div>
 
             <div className="ribbon-group">
@@ -1462,6 +1663,159 @@ export default function RibbonToolbar({
                 </div>
               </div>
               <div className="ribbon-group-label">Level</div>
+            </div>
+          </div>
+        )}
+        {activeTab === "manage" && (
+          <div className="ribbon-panel-content">
+            {/* Visibility / Graphics */}
+            <div className="ribbon-group">
+              <div
+                className="ribbon-group-tools"
+                style={{ flexWrap: "wrap", maxWidth: 280 }}
+              >
+                {(
+                  [
+                    "wall",
+                    "column",
+                    "door",
+                    "window",
+                    "slab",
+                    "beam",
+                    "roof",
+                    "room",
+                    "stair",
+                    "railing",
+                    "curtainWall",
+                    "duct",
+                    "pipe",
+                    "lightFixture",
+                    "table",
+                    "chair",
+                    "desk",
+                    "shelving",
+                    "toilet",
+                    "sink",
+                  ] as BimElementType[]
+                ).map((type) => {
+                  const vis = categoryVisibility[type];
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        onCategoryVisibilityChange(type, {
+                          visible: !vis?.visible,
+                        })
+                      }
+                      className={`ribbon-tool-btn ${vis?.visible === false ? "muted" : ""}`}
+                      title={`${vis?.visible === false ? "Show" : "Hide"} ${type}s`}
+                      style={{
+                        opacity: vis?.visible === false ? 0.35 : 1,
+                        minWidth: 36,
+                        padding: "2px 4px",
+                      }}
+                    >
+                      <span className="text-[9px] font-mono font-bold">
+                        {type.charAt(0).toUpperCase()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="ribbon-group-label">Visibility</div>
+            </div>
+
+            {/* Saved Views */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={onSaveView}
+                  className="ribbon-tool-btn"
+                  title="Save current camera view"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="12" cy="12" r="4" />
+                    <line x1="12" y1="2" x2="12" y2="5" />
+                  </svg>
+                  <span className="ribbon-tool-label">Save</span>
+                </button>
+                {savedViews.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => onLoadView(v)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      onDeleteView(v.id);
+                    }}
+                    className="ribbon-tool-btn"
+                    title={`Load view: ${v.name} (right-click to delete)`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M1 12 Q12 4 23 12 Q12 20 1 12" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <span className="ribbon-tool-label" style={{ fontSize: 8 }}>
+                      {v.name.length > 6 ? `${v.name.slice(0, 6)}..` : v.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="ribbon-group-label">Saved Views</div>
+            </div>
+
+            {/* Schedules */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                {(
+                  [
+                    { id: "door", label: "Door" },
+                    { id: "window", label: "Window" },
+                    { id: "room", label: "Room" },
+                    { id: "wall", label: "Wall" },
+                    { id: "all", label: "All" },
+                  ] as { id: ScheduleType; label: string }[]
+                ).map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onOpenSchedule(s.id)}
+                    className="ribbon-tool-btn"
+                    title={`${s.label} Schedule`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="1" />
+                      <line x1="3" y1="8" x2="21" y2="8" />
+                      <line x1="3" y1="13" x2="21" y2="13" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                      <line x1="10" y1="3" x2="10" y2="21" />
+                    </svg>
+                    <span className="ribbon-tool-label">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="ribbon-group-label">Schedules</div>
             </div>
           </div>
         )}
