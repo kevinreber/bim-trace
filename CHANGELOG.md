@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **AI Image to BIM — full building generation** — extended AI generation to produce complete multi-story buildings instead of just ground-floor walls; now generates walls, doors, windows, columns, slabs, roofs, stairs, ceilings, and beams across multiple levels; updated prompt with multi-story analysis strategy; preview modal shows counts for all element types and number of levels; increased max token output for larger buildings
+
 ### Added
 - **Documentation validation hook** — PreToolUse hook in `.claude/settings.json` now blocks commits when documentation is outdated; checks CHANGELOG.md on every commit, and checks CLAUDE.md when core files (types, viewer, ribbon, editor, routes) are changed
 - **`/validate-docs` slash command** — comprehensive documentation validator that checks README.md, CLAUDE.md, CHANGELOG.md, and ROADMAP.md against the actual codebase and auto-fixes drift

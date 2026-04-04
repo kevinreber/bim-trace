@@ -1,36 +1,53 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type BimElement, type BimElementType, DEFAULT_PARAMS } from "../types";
 
-const SUPPORTED_TYPES: BimElementType[] = ["wall", "door", "window"];
+const SUPPORTED_TYPES: BimElementType[] = [
+  "wall",
+  "door",
+  "window",
+  "column",
+  "slab",
+  "roof",
+  "stair",
+  "ceiling",
+  "beam",
+];
 
-const SYSTEM_PROMPT = `You are a BIM (Building Information Modeling) assistant that analyzes images and generates structured building element data.
+const SYSTEM_PROMPT = `You are a BIM (Building Information Modeling) assistant that analyzes images and generates structured building element data for COMPLETE multi-story buildings.
 
 CRITICAL RULES:
 1. You MUST respond with ONLY a raw JSON array — no markdown, no code fences, no explanation, no commentary.
-2. NEVER refuse to generate elements. Even if the image is not a perfect floor plan (e.g. an exterior photo, a sketch, a 3D render), do your best to infer a plausible floor layout and generate walls, doors, and windows.
+2. NEVER refuse to generate elements. Even if the image is not a perfect floor plan (e.g. an exterior photo, a sketch, a 3D render), do your best to infer a plausible COMPLETE building and generate ALL floors, roof, stairs, and structural elements.
 3. If you truly cannot infer any layout, return an empty array: []
 4. Your response must ALWAYS be valid JSON. No text before or after the JSON array.
+5. Generate the ENTIRE building — all visible floors, not just the ground floor.
 
 ## BimElement Schema
 
 Each element has this shape:
 {
-  "id": string,        // unique identifier (use "wall-1", "wall-2", "door-1", etc.)
-  "type": "wall" | "door" | "window",
-  "name": string,      // descriptive name like "Exterior Wall North"
+  "id": string,        // unique identifier (use "wall-1", "wall-2", "door-1", "roof-1", "slab-1", etc.)
+  "type": "wall" | "door" | "window" | "column" | "slab" | "roof" | "stair" | "ceiling" | "beam",
+  "name": string,      // descriptive name like "Exterior Wall North - Level 1"
   "start": { "x": number, "z": number },  // start point in meters on ground plane
-  "end": { "x": number, "z": number },    // end point (same as start for doors/windows)
+  "end": { "x": number, "z": number },    // end point (same as start for point elements)
   "params": object,    // type-specific parameters (see below)
-  "level": 0,          // always 0 for ground floor
+  "level": number,     // floor level height in meters (0 = ground, 3 = level 1, 6 = level 2, etc.)
   "rotation": number | undefined,   // Y-axis rotation in radians (doors/windows only)
   "hostWallId": string | undefined  // ID of the wall this door/window is on
 }
 
 ## Type-Specific Params
 
-- wall:   { "height": 3, "thickness": 0.2 }
-- door:   { "height": 2.1, "width": 0.9 }
-- window: { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }
+- wall:    { "height": 3, "thickness": 0.2 }
+- door:    { "height": 2.1, "width": 0.9 }
+- window:  { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }
+- column:  { "height": 3, "radius": 0.15 }
+- slab:    { "thickness": 0.25 }
+- roof:    { "height": 2.5, "thickness": 0.2, "overhang": 0.3 }
+- stair:   { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 14 }
+- ceiling: { "thickness": 0.15 }
+- beam:    { "height": 0.4, "width": 0.3 }
 
 Use these default dimensions unless the image clearly shows different proportions.
 
@@ -38,9 +55,18 @@ Use these default dimensions unless the image clearly shows different proportion
 
 - X axis = left-right (positive = right)
 - Z axis = up-down on the floor plan (positive = toward viewer / "south")
-- Y axis = vertical height (not used in coordinates, only in params)
+- Y axis = vertical height (not used in coordinates, only in params — level handles vertical placement)
 - Center the layout around origin (0, 0)
 - All measurements in meters
+
+## Multi-Story Rules
+
+- Each floor's elements use a different "level" value (0 for ground, 3 for 1st floor, 6 for 2nd floor, etc.)
+- Duplicate the wall layout for each visible floor (upper floors may have a smaller footprint)
+- Walls on upper floors should have IDs like "wall-L1-1", "wall-L2-1" to distinguish from ground floor
+- Doors and windows on upper floors must reference walls on the SAME level
+- Add a slab between each floor (the slab sits at the level height)
+- Add stairs to connect floors
 
 ## Wall Rules
 
@@ -57,16 +83,59 @@ Use these default dimensions unless the image clearly shows different proportion
 - Standard door width: 0.9m, window width: 1.0m
 - Place doors at logical entry points and windows on exterior walls
 
-## Example Output
+## Slab Rules
+
+- Slabs are defined by start and end points forming a rectangular footprint (opposite corners)
+- Ground floor slab at level 0, upper floor slabs at level 3, 6, etc.
+- Thickness is typically 0.25m
+
+## Roof Rules
+
+- Roof is defined by start and end points forming the rectangular base (opposite corners)
+- Place roof at the top level (e.g. level 6 for a 2-story building, level 3 for single-story)
+- The "height" param controls the roof peak height above the base
+
+## Stair Rules
+
+- Stairs are defined by start and end points (bottom to top of staircase)
+- Place stairs at the level they start from (level 0 stairs connect ground to level 1)
+- numRisers controls how many steps (typically 14-17 for a full floor height of ~3m)
+
+## Column Rules
+
+- Columns use start and end as the same point (center position)
+- Commonly placed at porch areas, structural supports, or decorative elements
+
+## Example Multi-Story Output
 
 [
-  { "id": "wall-1", "type": "wall", "name": "North Wall", "start": { "x": -5, "z": -3 }, "end": { "x": 5, "z": -3 }, "params": { "height": 3, "thickness": 0.2 }, "level": 0 },
-  { "id": "wall-2", "type": "wall", "name": "East Wall", "start": { "x": 5, "z": -3 }, "end": { "x": 5, "z": 3 }, "params": { "height": 3, "thickness": 0.2 }, "level": 0 },
-  { "id": "door-1", "type": "door", "name": "Entry Door", "start": { "x": 0, "z": -3 }, "end": { "x": 0, "z": -3 }, "params": { "height": 2.1, "width": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" }
+  { "id": "slab-g", "type": "slab", "name": "Ground Floor Slab", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "thickness": 0.25 }, "level": 0 },
+  { "id": "wall-1", "type": "wall", "name": "North Wall - Ground", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": -4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-2", "type": "wall", "name": "East Wall - Ground", "start": { "x": 6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "door-1", "type": "door", "name": "Entry Door", "start": { "x": 0, "z": -4 }, "end": { "x": 0, "z": -4 }, "params": { "height": 2.1, "width": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
+  { "id": "window-1", "type": "window", "name": "Front Window", "start": { "x": -3, "z": -4 }, "end": { "x": -3, "z": -4 }, "params": { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
+  { "id": "slab-1", "type": "slab", "name": "Level 1 Floor Slab", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "thickness": 0.25 }, "level": 3 },
+  { "id": "wall-L1-1", "type": "wall", "name": "North Wall - Level 1", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": -4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 3 },
+  { "id": "window-L1-1", "type": "window", "name": "Upper Window", "start": { "x": 0, "z": -4 }, "end": { "x": 0, "z": -4 }, "params": { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }, "level": 3, "rotation": 0, "hostWallId": "wall-L1-1" },
+  { "id": "stair-1", "type": "stair", "name": "Main Staircase", "start": { "x": 2, "z": 0 }, "end": { "x": 2, "z": 3 }, "params": { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 17 }, "level": 0 },
+  { "id": "roof-1", "type": "roof", "name": "Main Roof", "start": { "x": -6.3, "z": -4.3 }, "end": { "x": 6.3, "z": 4.3 }, "params": { "height": 2.5, "thickness": 0.2, "overhang": 0.3 }, "level": 6 }
 ]
 
-Analyze the image carefully. Identify all walls, doors, and windows. Generate accurate coordinates that reflect the layout's proportions and connectivity.
-If the image is an exterior photo or 3D rendering, infer the floor plan layout from visible features (facade width, visible doors/windows, typical room arrangements).
+## Analysis Strategy
+
+1. Count the number of floors visible in the image (look for window rows, floor lines, roof lines)
+2. Estimate the building footprint dimensions
+3. Generate ground floor walls forming connected room loops
+4. Add doors and windows on the ground floor matching visible openings
+5. Add a floor slab for each level
+6. Duplicate wall layouts for upper floors (adjust footprint if upper floors are smaller)
+7. Add upper-floor doors and windows referencing upper-floor walls
+8. Add stairs connecting each pair of adjacent floors
+9. Add columns where visible (porches, structural supports)
+10. Add a roof at the top level
+
+Analyze the image carefully. Generate the COMPLETE building with ALL floors visible in the image.
+If the image is an exterior photo, count visible floor levels and infer the full layout.
 Remember: respond with ONLY the JSON array, nothing else.`;
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
@@ -120,7 +189,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
         height: asNumber(params?.height, defaultP.height),
         thickness: asNumber(params?.thickness, defaultP.thickness),
       },
-      level: 0,
+      level: asNumber(item.level, 0),
     });
   }
 
@@ -128,7 +197,6 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
   for (const item of raw) {
     const type = item.type as string;
     if (type !== "door" && type !== "window") continue;
-    if (!SUPPORTED_TYPES.includes(type as BimElementType)) continue;
 
     const newId = crypto.randomUUID();
     const oldHostId = item.hostWallId as string | undefined;
@@ -158,7 +226,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
           height: asNumber(params?.height, defaultP.height),
           width: asNumber(params?.width, defaultP.width),
         },
-        level: 0,
+        level: asNumber(item.level, 0),
         rotation,
         hostWallId,
       });
@@ -175,10 +243,125 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
           width: asNumber(params?.width, defaultP.width),
           sillHeight: asNumber(params?.sillHeight, defaultP.sillHeight),
         },
-        level: 0,
+        level: asNumber(item.level, 0),
         rotation,
         hostWallId,
       });
+    }
+  }
+
+  // Third pass: structural and other elements (column, slab, roof, stair, ceiling, beam)
+  for (const item of raw) {
+    const type = item.type as string;
+    if (!SUPPORTED_TYPES.includes(type as BimElementType)) continue;
+    if (type === "wall" || type === "door" || type === "window") continue;
+
+    const oldId = item.id as string;
+    const newId = crypto.randomUUID();
+    if (oldId) idMap.set(oldId, newId);
+
+    const params = item.params as Record<string, unknown> | undefined;
+    const level = asNumber(item.level, 0);
+
+    switch (type) {
+      case "column": {
+        const defaultP = DEFAULT_PARAMS.column;
+        const position = validatePoint(item.start);
+        elements.push({
+          id: newId,
+          type: "column",
+          name: (item.name as string) || `Column ${elements.length + 1}`,
+          start: position,
+          end: position,
+          params: {
+            height: asNumber(params?.height, defaultP.height),
+            radius: asNumber(params?.radius, defaultP.radius),
+          },
+          level,
+        });
+        break;
+      }
+      case "slab": {
+        const defaultP = DEFAULT_PARAMS.slab;
+        elements.push({
+          id: newId,
+          type: "slab",
+          name: (item.name as string) || `Slab ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            thickness: asNumber(params?.thickness, defaultP.thickness),
+          },
+          level,
+        });
+        break;
+      }
+      case "roof": {
+        const defaultP = DEFAULT_PARAMS.roof;
+        elements.push({
+          id: newId,
+          type: "roof",
+          name: (item.name as string) || `Roof ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            height: asNumber(params?.height, defaultP.height),
+            thickness: asNumber(params?.thickness, defaultP.thickness),
+            overhang: asNumber(params?.overhang, defaultP.overhang),
+          },
+          level,
+        });
+        break;
+      }
+      case "stair": {
+        const defaultP = DEFAULT_PARAMS.stair;
+        elements.push({
+          id: newId,
+          type: "stair",
+          name: (item.name as string) || `Stair ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            riserHeight: asNumber(params?.riserHeight, defaultP.riserHeight),
+            treadDepth: asNumber(params?.treadDepth, defaultP.treadDepth),
+            width: asNumber(params?.width, defaultP.width),
+            numRisers: asNumber(params?.numRisers, defaultP.numRisers),
+          },
+          level,
+        });
+        break;
+      }
+      case "ceiling": {
+        const defaultP = DEFAULT_PARAMS.ceiling;
+        elements.push({
+          id: newId,
+          type: "ceiling",
+          name: (item.name as string) || `Ceiling ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            thickness: asNumber(params?.thickness, defaultP.thickness),
+          },
+          level,
+        });
+        break;
+      }
+      case "beam": {
+        const defaultP = DEFAULT_PARAMS.beam;
+        elements.push({
+          id: newId,
+          type: "beam",
+          name: (item.name as string) || `Beam ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            height: asNumber(params?.height, defaultP.height),
+            width: asNumber(params?.width, defaultP.width),
+          },
+          level,
+        });
+        break;
+      }
     }
   }
 
@@ -206,6 +389,13 @@ export interface AiGenerateResult {
   wallCount: number;
   doorCount: number;
   windowCount: number;
+  columnCount: number;
+  slabCount: number;
+  roofCount: number;
+  stairCount: number;
+  ceilingCount: number;
+  beamCount: number;
+  levelCount: number;
 }
 
 export async function generateFloorPlan(
@@ -216,8 +406,8 @@ export async function generateFloorPlan(
   const { data, mediaType } = await fileToBase64(imageFile);
 
   const userText = scaleHint
-    ? `Analyze this image and generate BIM elements as a JSON array. Scale hint: ${scaleHint}. Respond with ONLY the JSON array.`
-    : "Analyze this image and generate BIM elements as a JSON array. Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Respond with ONLY the JSON array.";
+    ? `Analyze this image and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array. Scale hint: ${scaleHint}. Respond with ONLY the JSON array.`
+    : "Analyze this image and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array. Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Respond with ONLY the JSON array.";
 
   const client = new Anthropic({
     apiKey,
@@ -226,7 +416,7 @@ export async function generateFloorPlan(
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -302,10 +492,19 @@ export async function generateFloorPlan(
     );
   }
 
+  const levels = new Set(elements.map((e) => e.level));
+
   return {
     elements,
     wallCount: elements.filter((e) => e.type === "wall").length,
     doorCount: elements.filter((e) => e.type === "door").length,
     windowCount: elements.filter((e) => e.type === "window").length,
+    columnCount: elements.filter((e) => e.type === "column").length,
+    slabCount: elements.filter((e) => e.type === "slab").length,
+    roofCount: elements.filter((e) => e.type === "roof").length,
+    stairCount: elements.filter((e) => e.type === "stair").length,
+    ceilingCount: elements.filter((e) => e.type === "ceiling").length,
+    beamCount: elements.filter((e) => e.type === "beam").length,
+    levelCount: levels.size,
   };
 }

@@ -298,6 +298,11 @@ export default function AiGenerateModal({
           <div className="ai-modal-preview">
             <div className="ai-modal-preview-header">
               Generated {result.elements.length} elements
+              {result.levelCount > 1 && (
+                <span style={{ fontWeight: "normal", marginLeft: 6 }}>
+                  across {result.levelCount} levels
+                </span>
+              )}
             </div>
             <div className="ai-modal-preview-counts">
               {result.wallCount > 0 && (
@@ -314,6 +319,39 @@ export default function AiGenerateModal({
                 <span className="ai-modal-count-badge">
                   {result.windowCount} window
                   {result.windowCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.slabCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.slabCount} slab{result.slabCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.roofCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.roofCount} roof{result.roofCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.stairCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.stairCount} stair
+                  {result.stairCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.columnCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.columnCount} column
+                  {result.columnCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.beamCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.beamCount} beam{result.beamCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {result.ceilingCount > 0 && (
+                <span className="ai-modal-count-badge">
+                  {result.ceilingCount} ceiling
+                  {result.ceilingCount !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
