@@ -499,7 +499,13 @@ function Home() {
   // AI batch add handler
   const handleAiBatchAdd = useCallback(
     (elements: BimElement[]) => {
-      const els = elements.map((el) => ({ ...el, level: activeLevelHeight }));
+      // Preserve per-element levels when AI generates multi-story buildings;
+      // only override to active level when all elements share the same level.
+      const hasMultipleLevels =
+        new Set(elements.map((el) => el.level)).size > 1;
+      const els = hasMultipleLevels
+        ? elements
+        : elements.map((el) => ({ ...el, level: activeLevelHeight }));
       setBimElements((prev) => [...prev, ...els]);
       undoStackRef.current.push({ type: "batchAdd", elements: els });
       redoStackRef.current = [];
