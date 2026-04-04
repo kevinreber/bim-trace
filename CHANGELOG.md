@@ -9,17 +9,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- **Server-side API proxy for AI Image to BIM** — Anthropic API calls now route through a server-side proxy (`/api/generate-floor-plan`) instead of calling Anthropic directly from the browser; eliminates `dangerouslyAllowBrowser` usage
+- **BYOK (Bring Your Own Key) pattern** — users enter their Anthropic API key in the modal, key is stored in localStorage and sent per-request to the server proxy; the server never logs or persists the key; optional `ANTHROPIC_API_KEY` env var serves as fallback
 - **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example
+- **AI Image to BIM — improved multi-story detection** — enabled extended thinking (chain-of-thought reasoning) for better building analysis; enhanced prompt with step-by-step reasoning strategy that explicitly identifies floor count from window rows, floor lines, and roof structure before generating elements
+- **AI Image to BIM — full building generation** — extended AI generation to produce complete multi-story buildings instead of just ground-floor walls; now generates walls, doors, windows, columns, slabs, roofs, stairs, ceilings, and beams across multiple levels; updated prompt with multi-story analysis strategy; preview modal shows counts for all element types and number of levels; increased max token output for larger buildings
 
 ### Added
+- **`.env.example`** — documents the optional `ANTHROPIC_API_KEY` environment variable (fallback when no user key provided)
+- **Vite API proxy plugin** — `server/apiProxy.ts` adds a `/api/generate-floor-plan` middleware endpoint for development
+- **Vercel serverless function** — `api/generate-floor-plan.ts` handles the same endpoint in production on Vercel
+- **Shared system prompt** — `server/prompt.ts` extracts the AI system prompt used by both dev proxy and Vercel function
 - **3D ViewCube** — Revit-style navigation cube overlay in the top-right of 3D viewports; click faces to snap to axial views (Top/Bottom/Front/Back/Left/Right), edges for 2-axis diagonal views, or corners for isometric views; cube orientation mirrors the main camera in real-time, and a Home button resets to the default 3D perspective
 - **Multi-image AI generation** — AI Image to BIM modal now supports uploading up to 5 images of the same building from different angles; cross-references all images for more accurate and complete building models
 - **Navigation toolbar** — View ribbon tab now includes Zoom In, Zoom Out, and Fit All buttons for easier viewport navigation, especially on trackpads
 - **Z key zoom-to-selection** — pressing Z with a selected element zooms/flies the camera to that element (like Revit's zoom-to-selection)
-
-### Changed
-- **AI Image to BIM — improved multi-story detection** — enabled extended thinking (chain-of-thought reasoning) for better building analysis; enhanced prompt with step-by-step reasoning strategy that explicitly identifies floor count from window rows, floor lines, and roof structure before generating elements
-- **AI Image to BIM — full building generation** — extended AI generation to produce complete multi-story buildings instead of just ground-floor walls; now generates walls, doors, windows, columns, slabs, roofs, stairs, ceilings, and beams across multiple levels; updated prompt with multi-story analysis strategy; preview modal shows counts for all element types and number of levels; increased max token output for larger buildings
 
 ### Added
 - **Documentation validation hook** — PreToolUse hook in `.claude/settings.json` now blocks commits when documentation is outdated; checks CHANGELOG.md on every commit, and checks CLAUDE.md when core files (types, viewer, ribbon, editor, routes) are changed

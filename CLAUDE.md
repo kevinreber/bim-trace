@@ -11,6 +11,11 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **2D Annotation**: Fabric.js
 - **Styling**: Tailwind CSS + custom CSS (Revit-inspired theme)
 - **Linting**: Biome
+- **AI**: Anthropic Claude API (server-side proxy via Vite plugin)
+
+## Environment Variables
+Copy `.env.example` to `.env` and fill in the values:
+- `ANTHROPIC_API_KEY` — Optional fallback for the AI Image to BIM feature. Users provide their own key via the UI (BYOK pattern). Only needed if you want a default key. Get a key at https://console.anthropic.com/settings/keys
 
 ## Commands
 - `npm run dev` — Start dev server
@@ -41,6 +46,9 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/routes/index.tsx`** — Main app state, layout composition, keyboard shortcuts, undo/redo
 - **`src/types.ts`** — All BIM element types (BimElementType, BimElementParams, DEFAULT_PARAMS)
 - **`src/globals.css`** — Revit-inspired theme with CSS custom properties and ribbon/panel styles
+- **`server/prompt.ts`** — Shared AI system prompt for floor plan generation
+- **`server/apiProxy.ts`** — Vite dev server plugin that proxies `/api/generate-floor-plan` to Anthropic API (keeps API key server-side)
+- **`api/generate-floor-plan.ts`** — Vercel serverless edge function for the same endpoint in production
 
 ### UI Components
 - **`src/components/RibbonToolbar.tsx`** — Tabbed ribbon toolbar (Modify/Architecture/Annotate/View/Manage) with SVG icons and grouped tool panels
