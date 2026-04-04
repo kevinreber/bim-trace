@@ -11,8 +11,10 @@ import * as THREE from "three";
 import type {
   BimElement,
   CameraPreset,
+  CategoryVisibility,
   CreationTool,
   DEFAULT_PARAMS,
+  Dimension3D,
   GridLine,
   GridSize,
   SelectedElement,
@@ -34,6 +36,7 @@ import {
   buildPipeMesh,
   buildRailingMesh,
   buildRoofMesh,
+  buildRoomMesh,
   buildShelvingMesh,
   buildSinkMesh,
   buildSlabMesh,
@@ -42,8 +45,8 @@ import {
   buildToiletMesh,
   buildWallMesh,
   buildWindowMesh,
-  getMaterialForElement,
   GHOST_MATERIAL,
+  getMaterialForElement,
   INVALID_GHOST_MATERIAL,
   SNAP_INDICATOR_MAT,
 } from "./geometryBuilders";
@@ -68,6 +71,10 @@ interface Viewer3DProps {
   onGridLineCreated?: (gl: GridLine) => void;
   wallAlignMode?: WallAlignMode;
   cameraPreset?: CameraPreset;
+  categoryVisibility?: Record<string, CategoryVisibility>;
+  dimensions3D?: Dimension3D[];
+  onDimension3DCreated?: (dim: Dimension3D) => void;
+  onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -123,6 +130,10 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     onGridLineCreated,
     wallAlignMode = "center",
     cameraPreset,
+    categoryVisibility,
+    dimensions3D = [],
+    onDimension3DCreated,
+    onContextMenu,
   },
   ref,
 ) {
@@ -157,8 +168,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
-
-
 
   // Snap refs
   const snapEnabledRef = useRef(snapEnabled);
@@ -430,7 +439,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         } else if (
           el.type === "slab" ||
           el.type === "ceiling" ||
-          el.type === "roof"
+          el.type === "roof" ||
+          el.type === "room"
         ) {
           // Area elements: show width x depth
           labels.push({
@@ -496,15 +506,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       flyToLevel(height: number) {
         const world = worldRef.current;
         if (!world) return;
-        world.camera.controls.setLookAt(
-          12,
-          height + 8,
-          12,
-          0,
-          height,
-          0,
-          true,
-        );
+        world.camera.controls.setLookAt(12, height + 8, 12, 0, height, 0, true);
       },
     }),
     [flyToMesh],
@@ -958,6 +960,31 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           );
           break;
         }
+        case "room": {
+          const p = params.room;
+          const s = start ?? end;
+          mesh = buildRoomMesh(s, end, p.height, 0, GHOST_MATERIAL);
+          break;
+        }
+        case "dimension3d": {
+          // Ghost line from start to cursor for 3D dimension
+          const s = start ?? end;
+          const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(s.x, 0.05, s.z),
+            new THREE.Vector3(end.x, 0.05, end.z),
+          ]);
+          const lineMat = new THREE.LineBasicMaterial({
+            color: 0xfbbf24,
+            transparent: true,
+            opacity: 0.8,
+          });
+          const lineObj = new THREE.Line(lineGeo, lineMat);
+          const dummyGeo = new THREE.SphereGeometry(0.05);
+          mesh = new THREE.Mesh(dummyGeo, GHOST_MATERIAL);
+          mesh.position.set(end.x, 0.05, end.z);
+          mesh.add(lineObj);
+          break;
+        }
         case "gridline": {
           // Ghost line from start to cursor
           const s = start ?? end;
@@ -1030,8 +1057,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       // Ortho constraint: Shift locks to horizontal or vertical
       applyOrthoConstraint(hit, e.shiftKey);
 
-      // For gridline tool, just show snap indicator and ghost (no wall snap)
-      if (tool === "gridline") {
+      // For gridline or dimension3d tool, just show snap indicator and ghost (no wall snap)
+      if (tool === "gridline" || tool === "dimension3d") {
         if (snapIndicatorRef.current) {
           snapIndicatorRef.current.position.set(hit.x, 0.02, hit.z);
           snapIndicatorRef.current.visible = true;
@@ -1344,6 +1371,90 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [gridLines]);
 
+  // ── Sync 3D dimension lines → scene ────────────────────────
+
+  const dimension3DObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const scene = world.scene.three;
+
+    // Remove stale
+    const currentIds = new Set(dimensions3D.map((d) => d.id));
+    for (const [id, group] of Array.from(
+      dimension3DObjectsRef.current.entries(),
+    )) {
+      if (!currentIds.has(id)) {
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+        dimension3DObjectsRef.current.delete(id);
+      }
+    }
+
+    for (const dim of dimensions3D) {
+      if (dimension3DObjectsRef.current.has(dim.id)) continue;
+
+      const group = new THREE.Group();
+
+      // Main line
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(dim.start.x, 0.05, dim.start.z),
+        new THREE.Vector3(dim.end.x, 0.05, dim.end.z),
+      ]);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0xfbbf24,
+        linewidth: 2,
+      });
+      const line = new THREE.Line(lineGeo, lineMat);
+      group.add(line);
+
+      // Extension lines (vertical ticks at endpoints)
+      const tickLen = 0.3;
+      for (const pt of [dim.start, dim.end]) {
+        const tickGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pt.x, -tickLen, pt.z),
+          new THREE.Vector3(pt.x, tickLen, pt.z),
+        ]);
+        const tick = new THREE.Line(
+          tickGeo,
+          new THREE.LineBasicMaterial({ color: 0xfbbf24 }),
+        );
+        group.add(tick);
+      }
+
+      // Distance label at midpoint
+      const mx = (dim.start.x + dim.end.x) / 2;
+      const mz = (dim.start.z + dim.end.z) / 2;
+      const label = `${dim.distance.toFixed(2)}m`;
+      const sprite = createTextSprite(label, new THREE.Vector3(mx, 0.5, mz));
+      group.add(sprite);
+
+      scene.add(group);
+      dimension3DObjectsRef.current.set(dim.id, group);
+    }
+  }, [dimensions3D, createTextSprite]);
+
+  // ── Visibility / Graphics filtering ───────────────────────
+
+  useEffect(() => {
+    if (!categoryVisibility) return;
+    for (const [id, mesh] of Array.from(authoredMeshesRef.current.entries())) {
+      const el = bimElements.find((e) => e.id === id);
+      if (!el) continue;
+      const vis = categoryVisibility[el.type];
+      if (vis) {
+        mesh.visible = vis.visible;
+      }
+    }
+  }, [categoryVisibility, bimElements]);
+
   // ── Click handler ──────────────────────────────────────────
 
   const handleClick = useCallback(
@@ -1390,6 +1501,29 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           return;
         }
 
+        // Dimension3D creation (two-click, not a BIM element)
+        if (tool === "dimension3d") {
+          if (!pendingStartRef.current) {
+            pendingStartRef.current = point;
+            return;
+          }
+          const dimStart = pendingStartRef.current;
+          pendingStartRef.current = null;
+          clearGhost();
+
+          const dx = point.x - dimStart.x;
+          const dz = point.z - dimStart.z;
+          const distance = Math.sqrt(dx * dx + dz * dz);
+          const dim: Dimension3D = {
+            id: crypto.randomUUID(),
+            start: { x: dimStart.x, y: 0, z: dimStart.z },
+            end: { x: point.x, y: 0, z: point.z },
+            distance,
+          };
+          onDimension3DCreated?.(dim);
+          return;
+        }
+
         const needsTwoClicks =
           tool === "wall" ||
           tool === "slab" ||
@@ -1400,7 +1534,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           tool === "railing" ||
           tool === "curtainWall" ||
           tool === "duct" ||
-          tool === "pipe";
+          tool === "pipe" ||
+          tool === "room";
 
         if (needsTwoClicks) {
           if (!pendingStartRef.current) {
@@ -1522,6 +1657,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [
       onElementSelected,
       onElementCreated,
+      onDimension3DCreated,
       raycastGround,
       raycastWalls,
       clearGhost,
@@ -1656,6 +1792,30 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={(e) => {
+        if (!onContextMenu) return;
+        e.preventDefault();
+        const container = containerRef.current;
+        const world = worldRef.current;
+        if (!container || !world) return;
+        const rect = container.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(x, y), world.camera.three);
+        const meshes: THREE.Mesh[] = [];
+        world.scene.three.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) meshes.push(obj);
+        });
+        const intersects = raycaster.intersectObjects(meshes, false);
+        if (intersects.length > 0) {
+          const mesh = intersects[0].object as THREE.Mesh;
+          const id = (mesh.userData.bimElementId as string) || null;
+          onContextMenu(e, id);
+        } else {
+          onContextMenu(e, null);
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           pendingStartRef.current = null;
@@ -1695,6 +1855,14 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             ) : (
               <span>Click to set gridline start point</span>
             )
+          ) : creationTool === "dimension3d" ? (
+            pendingStartRef.current ? (
+              <span>
+                Click to set dimension end point &middot; Esc to cancel
+              </span>
+            ) : (
+              <span>Click to set dimension start point</span>
+            )
           ) : creationTool === "wall" ||
             creationTool === "slab" ||
             creationTool === "beam" ||
@@ -1704,7 +1872,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             creationTool === "railing" ||
             creationTool === "curtainWall" ||
             creationTool === "duct" ||
-            creationTool === "pipe" ? (
+            creationTool === "pipe" ||
+            creationTool === "room" ? (
             pendingStartRef.current ? (
               <span>
                 Click to set end point &middot; Shift = ortho &middot; Esc to

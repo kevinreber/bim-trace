@@ -82,6 +82,7 @@ const TYPE_ICONS: Record<string, string> = {
   duct: "U",
   pipe: "P",
   lightFixture: "F",
+  room: "R",
 };
 
 function TreeNode({

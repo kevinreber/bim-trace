@@ -89,9 +89,10 @@ export type BimElementType =
   | "sink"
   | "duct"
   | "pipe"
-  | "lightFixture";
+  | "lightFixture"
+  | "room";
 
-export type CreationTool = "none" | BimElementType | "gridline";
+export type CreationTool = "none" | BimElementType | "gridline" | "dimension3d";
 
 export interface BimElementParams {
   wall: { height: number; thickness: number };
@@ -124,6 +125,7 @@ export interface BimElementParams {
   duct: { height: number; width: number };
   pipe: { diameter: number };
   lightFixture: { width: number; depth: number };
+  room: { height: number };
 }
 
 export interface BimElement {
@@ -138,6 +140,8 @@ export interface BimElement {
   params: BimElementParams[BimElementType];
   /** Floor level (Y offset) */
   level: number;
+  /** Group ID if element belongs to a group */
+  groupId?: string;
   /** Y-axis rotation in radians (used by doors to align with host wall) */
   rotation?: number;
   /** ID of the wall this element is hosted on (doors) */
@@ -173,6 +177,7 @@ export const DEFAULT_PARAMS: BimElementParams = {
   duct: { height: 0.3, width: 0.4 },
   pipe: { diameter: 0.1 },
   lightFixture: { width: 0.6, depth: 0.6 },
+  room: { height: 3 },
 };
 
 /** Default material for each element type (used when element.material is unset) */
@@ -198,6 +203,7 @@ export const DEFAULT_ELEMENT_MATERIAL: Record<BimElementType, BimMaterialType> =
     duct: "aluminum",
     pipe: "steel",
     lightFixture: "aluminum",
+    room: "drywall",
   };
 
 // ── Undo/Redo ──────────────────────────────────────────────────
@@ -322,6 +328,45 @@ export interface GridLine {
 }
 
 export type WallAlignMode = "left" | "center" | "right";
+
+// ── 3D Dimension Lines ──────────────────────────────────────
+
+export interface Dimension3D {
+  id: string;
+  start: { x: number; y: number; z: number };
+  end: { x: number; y: number; z: number };
+  distance: number;
+}
+
+// ── Visibility / Graphics Overrides ─────────────────────────
+
+export interface CategoryVisibility {
+  visible: boolean;
+  wireframe: boolean;
+  transparency: number; // 0–1
+}
+
+// ── Element Groups ──────────────────────────────────────────
+
+export interface ElementGroup {
+  id: string;
+  name: string;
+  elementIds: string[];
+}
+
+// ── Saved / Named Views ─────────────────────────────────────
+
+export interface SavedView {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  target: [number, number, number];
+  orthographic: boolean;
+}
+
+// ── Schedule View ───────────────────────────────────────────
+
+export type ScheduleType = "door" | "window" | "room" | "wall" | "all";
 
 // ── Snap & Grid ──────────────────────────────────────────────
 
