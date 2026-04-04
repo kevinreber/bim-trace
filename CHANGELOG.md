@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **AI Image to BIM — full building generation** — extended AI generation to produce complete multi-story buildings instead of just ground-floor walls; now generates walls, doors, windows, columns, slabs, roofs, stairs, ceilings, and beams across multiple levels; updated prompt with multi-story analysis strategy; preview modal shows counts for all element types and number of levels; increased max token output for larger buildings
+
 ### Added
 - **Room element** — new two-click Room element type for defining enclosed spaces; displays a semi-transparent blue floor area with wireframe volume outline; Properties panel shows computed Area (m²), Perimeter (m), and Volume (m³); accessible from Architecture ribbon's "Room & Area" group or Shift+M shortcut
 - **3D Dimension tool** — two-click linear measurement tool in the 3D viewport; creates persistent yellow dimension lines with distance labels, extension ticks at endpoints, and midpoint measurement text; accessible from Annotate ribbon's "3D Measure" group
