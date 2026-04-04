@@ -10,7 +10,6 @@ import {
 import * as THREE from "three";
 import type {
   BimElement,
-  BimElementType,
   CameraPreset,
   CategoryVisibility,
   CreationTool,
@@ -440,7 +439,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         } else if (
           el.type === "slab" ||
           el.type === "ceiling" ||
-          el.type === "roof"
+          el.type === "roof" ||
+          el.type === "room"
         ) {
           // Area elements: show width x depth
           labels.push({
@@ -1443,9 +1443,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   // ── Visibility / Graphics filtering ───────────────────────
 
-  const categoryVisibilityRef = useRef(categoryVisibility);
-  categoryVisibilityRef.current = categoryVisibility;
-
   useEffect(() => {
     if (!categoryVisibility) return;
     for (const [id, mesh] of Array.from(authoredMeshesRef.current.entries())) {
@@ -1454,11 +1451,6 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const vis = categoryVisibility[el.type];
       if (vis) {
         mesh.visible = vis.visible;
-        if (mesh.material instanceof THREE.MeshStandardMaterial) {
-          mesh.material.wireframe = vis.wireframe;
-          mesh.material.opacity = vis.visible ? 1 - vis.transparency : 0;
-          mesh.material.transparent = vis.transparency > 0 || !vis.visible;
-        }
       }
     }
   }, [categoryVisibility, bimElements]);
@@ -1665,6 +1657,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     [
       onElementSelected,
       onElementCreated,
+      onDimension3DCreated,
       raycastGround,
       raycastWalls,
       clearGhost,
