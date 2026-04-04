@@ -3,9 +3,13 @@ import { type BimElement, type BimElementType, DEFAULT_PARAMS } from "../types";
 
 const SUPPORTED_TYPES: BimElementType[] = ["wall", "door", "window"];
 
-const SYSTEM_PROMPT = `You are a BIM (Building Information Modeling) assistant that analyzes floor plan images and generates structured building element data.
+const SYSTEM_PROMPT = `You are a BIM (Building Information Modeling) assistant that analyzes images and generates structured building element data.
 
-You MUST respond with ONLY a raw JSON array of BimElement objects — no markdown, no code fences, no explanation.
+CRITICAL RULES:
+1. You MUST respond with ONLY a raw JSON array — no markdown, no code fences, no explanation, no commentary.
+2. NEVER refuse to generate elements. Even if the image is not a perfect floor plan (e.g. an exterior photo, a sketch, a 3D render), do your best to infer a plausible floor layout and generate walls, doors, and windows.
+3. If you truly cannot infer any layout, return an empty array: []
+4. Your response must ALWAYS be valid JSON. No text before or after the JSON array.
 
 ## BimElement Schema
 
@@ -61,7 +65,9 @@ Use these default dimensions unless the image clearly shows different proportion
   { "id": "door-1", "type": "door", "name": "Entry Door", "start": { "x": 0, "z": -3 }, "end": { "x": 0, "z": -3 }, "params": { "height": 2.1, "width": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" }
 ]
 
-Analyze the floor plan carefully. Identify all walls, doors, and windows. Generate accurate coordinates that reflect the layout's proportions and connectivity.`;
+Analyze the image carefully. Identify all walls, doors, and windows. Generate accurate coordinates that reflect the layout's proportions and connectivity.
+If the image is an exterior photo or 3D rendering, infer the floor plan layout from visible features (facade width, visible doors/windows, typical room arrangements).
+Remember: respond with ONLY the JSON array, nothing else.`;
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 
@@ -210,8 +216,8 @@ export async function generateFloorPlan(
   const { data, mediaType } = await fileToBase64(imageFile);
 
   const userText = scaleHint
-    ? `Analyze this floor plan image and generate BIM elements. Scale hint: ${scaleHint}`
-    : "Analyze this floor plan image and generate BIM elements. Estimate reasonable dimensions in meters based on typical residential/commercial proportions.";
+    ? `Analyze this image and generate BIM elements as a JSON array. Scale hint: ${scaleHint}. Respond with ONLY the JSON array.`
+    : "Analyze this image and generate BIM elements as a JSON array. Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Respond with ONLY the JSON array.";
 
   const client = new Anthropic({
     apiKey,
@@ -255,16 +261,40 @@ export async function generateFloorPlan(
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error(
-      "Failed to parse AI response as JSON. The AI may not have returned valid element data.",
-    );
+    // The AI returned non-JSON text — extract a useful message for the user
+    const preview =
+      jsonText.length > 200 ? `${jsonText.slice(0, 200)}…` : jsonText;
+    throw new Error(`AI did not return valid JSON. Response: "${preview}"`);
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error("AI response is not an array of elements");
+    // Might be a wrapper object with an array inside
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "elements" in (parsed as Record<string, unknown>)
+    ) {
+      const inner = (parsed as Record<string, unknown>).elements;
+      if (Array.isArray(inner)) {
+        parsed = inner;
+      } else {
+        throw new Error("AI response is not an array of elements");
+      }
+    } else {
+      throw new Error("AI response is not an array of elements");
+    }
   }
 
-  const elements = validateAndFixElements(parsed as Record<string, unknown>[]);
+  const parsedArray = parsed as unknown[];
+  if (parsedArray.length === 0) {
+    throw new Error(
+      "AI returned an empty layout. Try uploading a floor plan image with visible walls, doors, and windows.",
+    );
+  }
+
+  const elements = validateAndFixElements(
+    parsedArray as Record<string, unknown>[],
+  );
 
   if (elements.length === 0) {
     throw new Error(

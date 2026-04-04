@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Room shortcuts** — Shift+M keyboard shortcut for room creation tool
 
 ### Fixed
+- **AI Image to BIM generation** — fixed JSON parse failure when AI returns explanatory text instead of element data; strengthened system prompt to always return JSON; improved error messages to show the actual AI response; added support for generating BIM elements from exterior photos and non-floor-plan images
 - **Plan View projection** — Plan View now uses true orthographic projection instead of perspective, making elements appear flat/2D as expected in architectural plan views
 - **Elevation view projection** — All elevation views (Front, Back, Left, Right) now use orthographic projection for accurate 2D representation
 
