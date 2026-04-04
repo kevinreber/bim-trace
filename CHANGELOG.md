@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Documentation validation hook** — PreToolUse hook in `.claude/settings.json` now blocks commits when documentation is outdated; checks CHANGELOG.md on every commit, and checks CLAUDE.md when core files (types, viewer, ribbon, editor, routes) are changed
+- **`/validate-docs` slash command** — comprehensive documentation validator that checks README.md, CLAUDE.md, CHANGELOG.md, and ROADMAP.md against the actual codebase and auto-fixes drift
+
+### Changed
+- **CLAUDE.md documentation policy** — expanded from changelog-only policy to cover all documentation files; added table of docs with update triggers and slash command reference
+
+### Added
 - **Room element** — new two-click Room element type for defining enclosed spaces; displays a semi-transparent blue floor area with wireframe volume outline; Properties panel shows computed Area (m²), Perimeter (m), and Volume (m³); accessible from Architecture ribbon's "Room & Area" group or Shift+M shortcut
 - **3D Dimension tool** — two-click linear measurement tool in the 3D viewport; creates persistent yellow dimension lines with distance labels, extension ticks at endpoints, and midpoint measurement text; accessible from Annotate ribbon's "3D Measure" group
 - **Visibility/Graphics overrides** — per-category show/hide toggles in the new Manage ribbon tab; click any element type badge to toggle visibility; supports wireframe and transparency control; hidden categories are reflected in real-time in the 3D viewport
