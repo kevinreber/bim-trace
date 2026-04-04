@@ -67,9 +67,18 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/components/MarkupList.tsx`** — Markup management with status tracking and 3D linking
 - **`src/components/CreationToolbar.tsx`** — Legacy creation toolbar (replaced by RibbonToolbar)
 
-## Changelog Policy
-**Every commit MUST include an update to CHANGELOG.md.**
+## Documentation Policy
+**Every commit MUST include documentation updates for all affected docs.**
 
+A PreToolUse hook in `.claude/settings.json` enforces this by blocking `git commit` when:
+- CHANGELOG.md hasn't been updated (always required)
+- Core files changed (types, viewer, ribbon, editor, routes) but CLAUDE.md wasn't updated
+
+### Slash Commands
+- **`/validate-docs`** — Comprehensive documentation validation. Checks README.md, CLAUDE.md, CHANGELOG.md, and ROADMAP.md against the actual codebase and fixes any drift. **Run this before every commit.**
+- **`/update-changelog`** — Quick changelog update from current git diff.
+
+### Changelog Policy
 When making changes:
 1. Add entries under the `## [Unreleased]` section in `CHANGELOG.md`
 2. Use the appropriate subsection: `### Added`, `### Changed`, `### Fixed`, `### Removed`
@@ -79,6 +88,14 @@ When making changes:
 When releasing a version:
 1. Move all `[Unreleased]` entries to a new version section `## [x.y.z] - YYYY-MM-DD`
 2. Create a fresh empty `## [Unreleased]` section
+
+### Documentation Files
+| File | Purpose | When to update |
+|------|---------|----------------|
+| `CHANGELOG.md` | User-facing change log | Every commit |
+| `CLAUDE.md` | Developer guide for Claude Code | When architecture, files, shortcuts, or conventions change |
+| `README.md` | Project overview & tech stack | When tech stack or high-level features change |
+| `ROADMAP.md` | Feature tracking with checkboxes | When a planned feature is shipped |
 
 ## Adding New BIM Elements
 1. Add the type to `BimElementType` union in `src/types.ts`
