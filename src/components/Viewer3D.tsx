@@ -508,6 +508,40 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         if (!world) return;
         world.camera.controls.setLookAt(12, height + 8, 12, 0, height, 0, true);
       },
+      zoomIn() {
+        const world = worldRef.current;
+        if (!world) return;
+        world.camera.controls.dolly(3, true);
+      },
+      zoomOut() {
+        const world = worldRef.current;
+        if (!world) return;
+        world.camera.controls.dolly(-3, true);
+      },
+      zoomToFit() {
+        const world = worldRef.current;
+        if (!world) return;
+        // Compute bounding box of all scene content
+        const box = new THREE.Box3();
+        world.scene.three.traverse((obj) => {
+          if (obj instanceof THREE.Mesh && obj.geometry) {
+            box.expandByObject(obj);
+          }
+        });
+        if (box.isEmpty()) return;
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 1);
+        world.camera.controls.setLookAt(
+          center.x + maxDim * 1.2,
+          center.y + maxDim * 0.8,
+          center.z + maxDim * 1.2,
+          center.x,
+          center.y,
+          center.z,
+          true,
+        );
+      },
     }),
     [flyToMesh],
   );

@@ -74,6 +74,10 @@ interface RibbonToolbarProps {
   selectedElementIds: string[];
   // Schedule
   onOpenSchedule: (type: ScheduleType) => void;
+  // Navigation
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomToFit?: () => void;
 }
 
 type RibbonTab = "architecture" | "annotate" | "view" | "modify" | "manage";
@@ -788,6 +792,9 @@ export default function RibbonToolbar({
   onUngroupSelected,
   selectedElementIds,
   onOpenSchedule,
+  onZoomIn,
+  onZoomOut,
+  onZoomToFit,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
 
@@ -1663,6 +1670,73 @@ export default function RibbonToolbar({
                 </div>
               </div>
               <div className="ribbon-group-label">Level</div>
+            </div>
+
+            {/* Navigation group */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={onZoomIn}
+                  className="ribbon-tool-btn"
+                  title="Zoom In"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="11" y1="8" x2="11" y2="14" />
+                    <line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                  <span className="ribbon-tool-label">Zoom +</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onZoomOut}
+                  className="ribbon-tool-btn"
+                  title="Zoom Out"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                  <span className="ribbon-tool-label">Zoom −</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onZoomToFit}
+                  className="ribbon-tool-btn"
+                  title="Zoom to Fit (show all elements)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path d="M3 8V5a2 2 0 0 1 2-2h3" />
+                    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                    <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
+                    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                    <rect x="7" y="7" width="10" height="10" rx="1" />
+                  </svg>
+                  <span className="ribbon-tool-label">Fit All</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Navigation</div>
             </div>
           </div>
         )}

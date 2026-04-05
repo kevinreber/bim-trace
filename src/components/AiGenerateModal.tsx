@@ -22,8 +22,8 @@ export default function AiGenerateModal({
   const [state, setState] = useState<ModalState>("idle");
   const [apiKey, setApiKeyState] = useState(getApiKey() ?? "");
   const [showKey, setShowKey] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [scaleHint, setScaleHint] = useState("");
   const [result, setResult] = useState<AiGenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,37 +32,44 @@ export default function AiGenerateModal({
   const apiKeyInputId = "ai-modal-api-key";
   const scaleHintInputId = "ai-modal-scale-hint";
 
-  const handleFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
-      setError("Please select an image file (PNG, JPG, or WebP)");
-      return;
+  const handleFiles = useCallback((files: File[]) => {
+    const valid: File[] = [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        setError("Please select image files (PNG, JPG, or WebP)");
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        setError("Each image must be under 20MB");
+        return;
+      }
+      valid.push(file);
     }
-    if (file.size > 20 * 1024 * 1024) {
-      setError("Image must be under 20MB");
-      return;
-    }
-    setImageFile(file);
+    setImageFiles((prev) => {
+      const combined = [...prev, ...valid].slice(0, 5); // max 5 images
+      return combined;
+    });
     setError(null);
-    const url = URL.createObjectURL(file);
-    setImagePreview(url);
+    const urls = valid.map((f) => URL.createObjectURL(f));
+    setImagePreviews((prev) => [...prev, ...urls].slice(0, 5));
   }, []);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) handleFiles(files);
     },
-    [handleFile],
+    [handleFiles],
   );
 
   const resetModal = useCallback(() => {
     setState("idle");
-    setImageFile(null);
-    setImagePreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
+    setImageFiles([]);
+    setImagePreviews((prev) => {
+      for (const url of prev) URL.revokeObjectURL(url);
+      return [];
     });
     setScaleHint("");
     setResult(null);
@@ -70,7 +77,7 @@ export default function AiGenerateModal({
   }, []);
 
   const handleGenerate = useCallback(async () => {
-    if (!imageFile) return;
+    if (imageFiles.length === 0) return;
 
     const key = apiKey.trim();
     if (!key) {
@@ -85,7 +92,7 @@ export default function AiGenerateModal({
     try {
       const res = await generateFloorPlan(
         key,
-        imageFile,
+        imageFiles,
         scaleHint.trim() || undefined,
       );
       setResult(res);
@@ -94,7 +101,7 @@ export default function AiGenerateModal({
       setError(err instanceof Error ? err.message : "Generation failed");
       setState("error");
     }
-  }, [imageFile, apiKey, scaleHint]);
+  }, [imageFiles, apiKey, scaleHint]);
 
   const handleApply = useCallback(() => {
     if (result) {
@@ -189,12 +196,17 @@ export default function AiGenerateModal({
 
         {/* Image Upload */}
         <div className="ai-modal-section">
-          <span className="ai-modal-label">Floor Plan Image</span>
+          <span className="ai-modal-label">
+            Building Images{" "}
+            <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+              (up to 5 — multiple angles improve accuracy)
+            </span>
+          </span>
           {/* biome-ignore lint/a11y/useSemanticElements: dropzone needs div for drag-and-drop support */}
           <div
             role="button"
             tabIndex={0}
-            className={`ai-modal-dropzone ${dragOver ? "drag-over" : ""} ${imagePreview ? "has-image" : ""}`}
+            className={`ai-modal-dropzone ${dragOver ? "drag-over" : ""} ${imagePreviews.length > 0 ? "has-image" : ""}`}
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
@@ -209,12 +221,54 @@ export default function AiGenerateModal({
               }
             }}
           >
-            {imagePreview ? (
-              <img
-                src={imagePreview}
-                alt="Floor plan preview"
-                className="ai-modal-preview-img"
-              />
+            {imagePreviews.length > 0 ? (
+              <div className="ai-modal-image-grid">
+                {imagePreviews.map((url, i) => (
+                  <div key={url} className="ai-modal-image-thumb">
+                    <img
+                      src={url}
+                      alt={`Building view ${i + 1}`}
+                      className="ai-modal-preview-img"
+                    />
+                    <button
+                      type="button"
+                      className="ai-modal-image-remove"
+                      title="Remove image"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        URL.revokeObjectURL(url);
+                        setImageFiles((prev) =>
+                          prev.filter((_, idx) => idx !== i),
+                        );
+                        setImagePreviews((prev) =>
+                          prev.filter((_, idx) => idx !== i),
+                        );
+                        setState("idle");
+                        setResult(null);
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+                {imagePreviews.length < 5 && (
+                  <div className="ai-modal-image-add">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--text-muted)"
+                      strokeWidth="1.5"
+                      aria-hidden="true"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    <span style={{ fontSize: 10 }}>Add</span>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="ai-modal-dropzone-text">
                 <svg
@@ -230,9 +284,9 @@ export default function AiGenerateModal({
                   <circle cx="8.5" cy="8.5" r="1.5" />
                   <path d="M21 15l-5-5L5 21" />
                 </svg>
-                <span>Drop image here or click to browse</span>
+                <span>Drop images here or click to browse</span>
                 <span className="ai-modal-file-hint">
-                  PNG, JPG, WebP up to 20MB
+                  PNG, JPG, WebP up to 20MB each
                 </span>
               </div>
             )}
@@ -240,31 +294,16 @@ export default function AiGenerateModal({
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              multiple
               style={{ display: "none" }}
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
+                const files = Array.from(e.target.files ?? []);
+                if (files.length > 0) handleFiles(files);
+                // Reset input so same file can be re-selected
+                e.target.value = "";
               }}
             />
           </div>
-          {imageFile && (
-            <button
-              type="button"
-              className="ai-modal-btn-sm"
-              style={{ marginTop: 6 }}
-              onClick={() => {
-                setImageFile(null);
-                setImagePreview((prev) => {
-                  if (prev) URL.revokeObjectURL(prev);
-                  return null;
-                });
-                setState("idle");
-                setResult(null);
-              }}
-            >
-              Remove image
-            </button>
-          )}
         </div>
 
         {/* Scale Hint */}
@@ -384,7 +423,7 @@ export default function AiGenerateModal({
             <button
               type="button"
               className="ai-modal-btn primary"
-              disabled={!imageFile || state === "generating"}
+              disabled={imageFiles.length === 0 || state === "generating"}
               onClick={handleGenerate}
             >
               {state === "generating" ? "Generating..." : "Generate"}

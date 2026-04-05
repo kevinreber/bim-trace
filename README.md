@@ -7,16 +7,18 @@ Most BIM tools are too heavy for quick reviews, and most PDF tools lack 3D conte
 
 ---
 
-## 🛠️ Technical Stack (Free-Tier Optimized)
+## 🛠️ Technical Stack
 
 | Component | Technology | Role |
 | :--- | :--- | :--- |
-| **Frontend** | **Next.js 14 (App Router)** | Framework & Routing |
-| **3D Engine** | **IFC.js / @thatopen/components** | Client-side IFC parsing & rendering |
+| **Frontend** | **Vite + React 18 + TypeScript 5** | Framework & Build |
+| **Routing** | **TanStack Router** | File-based routing |
+| **3D Engine** | **@thatopen/components (IFC.js) + Three.js** | Client-side IFC parsing & 3D rendering |
 | **2D Engine** | **PDF.js** | High-performance PDF rendering |
 | **Markup Layer** | **Fabric.js** | Vector canvas for "Bluebeam-style" tools |
-| **Database** | **Supabase (PostgreSQL)** | Persistent storage for markups and metadata |
-| **Auth/Storage** | **Supabase Auth & S3** | User management and file hosting |
+| **AI** | **Anthropic Claude API** | Image-to-BIM generation |
+| **Styling** | **Tailwind CSS** | Utility-first CSS framework |
+| **Linting** | **Biome** | Lint & format |
 
 ---
 
