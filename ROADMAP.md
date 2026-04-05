@@ -188,19 +188,19 @@
 ## PR 8 — 3D Viewer Enhancements
 
 ### Visualization
-- [ ] **Section plane** — clip model with a movable section plane
+- [x] **Section plane** — clip model with a movable section plane
 - [ ] **X-ray / transparency mode** — make all elements semi-transparent
 - [ ] **Wireframe mode** — toggle wireframe rendering
-- [ ] **Element visibility** — hide/show by IFC category (walls, doors, etc.)
+- [x] **Element visibility** — hide/show by IFC category (walls, doors, etc.)
 - [ ] **Color-by-property** — color elements by status, material, or custom property
 - [ ] **Shadow mapping** — toggle realistic shadows
 - [ ] **Ambient occlusion** — SSAO for depth perception
 
 ### Camera & Navigation
-- [ ] **Named views** — save and restore camera positions (e.g. "North Elevation")
-- [ ] **Orbit/Pan/Zoom presets** — top, front, left, right, isometric views
+- [x] **Named views** — save and restore camera positions (e.g. "North Elevation")
+- [x] **Orbit/Pan/Zoom presets** — top, front, left, right, isometric views
 - [ ] **First-person walkthrough** — WASD navigation at eye height
-- [ ] **Fit-to-selection** — zoom to fit selected element(s)
+- [x] **Fit-to-selection** — zoom to fit selected element(s)
 - [ ] **Section box** — define a 3D bounding box to isolate a region
 
 ### Model Intelligence
@@ -240,14 +240,14 @@
 - [ ] **Responsive design** — tablet-friendly layout
 - [x] **Keyboard shortcuts** — hotkeys for all tools (Shift+W=wall, Shift+C=column, etc.)
 - [ ] **Command palette** — Ctrl+K search for actions, elements, markups
-- [ ] **Context menus** — right-click menus on elements and markups
+- [x] **Context menus** — right-click menus on elements and markups
 - [ ] **Drag-to-resize panes** — adjustable split-pane widths
 - [ ] **Dark/light theme** — theme toggle with system preference detection
 
 ### Feedback & Discoverability
 - [x] **Toast notifications** — success/error messages for actions
 - [ ] **Onboarding tour** — guided walkthrough for first-time users
-- [ ] **Tooltips** — hover tooltips on all toolbar buttons
+- [x] **Tooltips** — hover tooltips on all toolbar buttons
 - [ ] **Loading skeletons** — skeleton states for sidebar content
 - [ ] **Empty states** — helpful illustrations and CTAs when no data
 
@@ -449,7 +449,7 @@
 
 ### Sketch-to-BIM
 - [ ] **Photo-to-plan** — upload photo of hand-drawn sketch, AI converts to walls/doors
-- [ ] **Image-to-massing** — upload building photo, AI generates approximate 3D model
+- [x] **Image-to-massing** — upload building photo, AI generates approximate 3D model
 - [ ] **PDF-to-BIM** — import existing floor plan PDF, AI traces walls into 3D elements
 - [ ] **Napkin sketch mode** — draw rough shapes in 2D, AI snaps to clean geometry
 

@@ -23,7 +23,7 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 ### Layout (Revit-inspired)
 ```
 ┌─ Quick Access Bar (undo/redo, app title) ──────────────────────┐
-├─ Ribbon Tabs (Modify | Architecture | Annotate | View) ────────┤
+├─ Ribbon Tabs (Modify | Architecture | Annotate | View | Manage) ┤
 ├─ Ribbon Panel (grouped tools with SVG icons) ──────────────────┤
 ├─────────────┬──────────────────────────────┬───────────────────┤
 │ Project     │  3D Viewport  │  2D Sheet    │ Properties Panel  │
@@ -43,19 +43,23 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/globals.css`** — Revit-inspired theme with CSS custom properties and ribbon/panel styles
 
 ### UI Components
-- **`src/components/RibbonToolbar.tsx`** — Tabbed ribbon toolbar (Modify/Architecture/Annotate/View) with SVG icons and grouped tool panels
+- **`src/components/RibbonToolbar.tsx`** — Tabbed ribbon toolbar (Modify/Architecture/Annotate/View/Manage) with SVG icons and grouped tool panels
 - **`src/components/Sidebar.tsx`** — Project Browser (left panel) + Properties Panel (right panel), exported as `ProjectBrowser` and `PropertiesPanel`
-- **`src/components/ElementEditor.tsx`** — Revit-style property grid with collapsible sections (Identity Data, Dimensions, Constraints, Location)
+- **`src/components/ElementEditor.tsx`** — Revit-style property grid with collapsible sections (Identity Data, Dimensions, Material, Constraints, Location)
+- **`src/components/ViewportPane.tsx`** — Multi-pane viewport wrapper supporting 3D, Plan, Elevation, Section, and 2D Sheet view types
+- **`src/components/ContextMenu.tsx`** — Right-click context menus on 3D elements (Select, Copy, Hide Category, Delete)
+- **`src/components/ScheduleModal.tsx`** — Auto-generated tabular schedules for element types (Door, Window, Room, Wall, All)
+- **`src/components/AiGenerateModal.tsx`** — AI Image to BIM modal with multi-image upload and generation preview
 
 ### 3D Engine
+- **`src/components/geometryBuilders.ts`** — All geometry builder functions (`buildWallMesh`, `buildDoorMesh`, etc.), materials, and wall opening computation (`computeWallOpenings`); extracted from Viewer3D
 - **`src/components/Viewer3D.tsx`** — Three.js viewer with:
-  - Geometry builders (`buildWallMesh`, `buildDoorMesh`, etc.)
-  - Wall boolean cutouts via `ExtrudeGeometry` with Shape holes (`computeWallOpenings`)
   - Element creation (two-click and single-click tools)
   - Raycast selection with door/window priority over host walls
   - Ghost preview system for element placement
   - Wall-snapping for doors/windows (`raycastWalls`)
-  - `buildMeshForElement()` dispatch switch
+  - Scene sync dispatching to geometry builders
+  - Camera control (flyToElement, zoomIn/Out, zoomToFit)
 
 ### 2D Engine
 - **`src/components/PdfViewer.tsx`** — PDF.js rendering with page navigation and zoom
@@ -66,6 +70,10 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/components/PropertyPanel.tsx`** — Read-only IFC element property display
 - **`src/components/MarkupList.tsx`** — Markup management with status tracking and 3D linking
 - **`src/components/CreationToolbar.tsx`** — Legacy creation toolbar (replaced by RibbonToolbar)
+
+### AI Services
+- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with extended thinking and multi-image support
+- **`src/services/aiApiKeyStore.ts`** — Browser-local API key persistence
 
 ## Documentation Policy
 **Every commit MUST include documentation updates for all affected docs.**
@@ -101,9 +109,9 @@ When releasing a version:
 1. Add the type to `BimElementType` union in `src/types.ts`
 2. Add params interface to `BimElementParams` in `src/types.ts`
 3. Add defaults to `DEFAULT_PARAMS` in `src/types.ts`
-4. Add material to `ELEMENT_MATERIALS` in `Viewer3D.tsx`
-5. Create `buildXxxMesh()` geometry builder in `Viewer3D.tsx`
-6. Add case to `buildMeshForElement()` switch in `Viewer3D.tsx`
+4. Add material to `ELEMENT_MATERIALS` in `geometryBuilders.ts`
+5. Create `buildXxxMesh()` geometry builder in `geometryBuilders.ts`
+6. Add case to `buildMeshForElement()` switch in `geometryBuilders.ts`
 7. Add ghost preview case in `updateGhostPreview()` in `Viewer3D.tsx`
 8. Add to click handler logic in `handleClick()` in `Viewer3D.tsx`
 9. Add tool entry + SVG icon to `RibbonToolbar.tsx` (in the appropriate group)
@@ -131,9 +139,12 @@ When a door or window is hosted on a wall (`hostWallId`), the wall geometry auto
 | `1` / `2` / `3` / `4` | Single / 2-Up / 3-Up / 4-Up viewport layout |
 | `G` | Toggle snap-to-grid |
 | `Z` | Zoom to selected element |
-| `Escape` | Deselect tool |
-| `Delete` / `Backspace` | Delete selected element |
+| `Tab` | Cycle wall alignment mode (left/center/right) during wall creation |
+| `Arrow keys` | Move selected element(s) by grid step |
+| `Escape` | Deselect tool and clear selection |
+| `Delete` / `Backspace` | Delete selected element(s) |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
+| `Ctrl+Click` | Multi-select elements |
 
 ## Conventions
 - Use Biome for formatting (not Prettier)
