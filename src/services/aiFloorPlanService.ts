@@ -121,20 +121,25 @@ Use these default dimensions unless the image clearly shows different proportion
   { "id": "roof-1", "type": "roof", "name": "Main Roof", "start": { "x": -6.3, "z": -4.3 }, "end": { "x": 6.3, "z": 4.3 }, "params": { "height": 2.5, "thickness": 0.2, "overhang": 0.3 }, "level": 6 }
 ]
 
-## Analysis Strategy
+## Analysis Strategy — THINK STEP BY STEP
 
-1. Count the number of floors visible in the image (look for window rows, floor lines, roof lines)
-2. Estimate the building footprint dimensions
-3. Generate ground floor walls forming connected room loops
-4. Add doors and windows on the ground floor matching visible openings
-5. Add a floor slab for each level
-6. Duplicate wall layouts for upper floors (adjust footprint if upper floors are smaller)
-7. Add upper-floor doors and windows referencing upper-floor walls
-8. Add stairs connecting each pair of adjacent floors
-9. Add columns where visible (porches, structural supports)
-10. Add a roof at the top level
+Before generating JSON, reason carefully about the building:
 
-Analyze the image carefully. Generate the COMPLETE building with ALL floors visible in the image.
+1. **Count floors**: Look for horizontal bands of windows, floor lines, roof eaves, and visible floor separations. A two-story house has TWO rows of windows stacked vertically. A dormer or attic with windows counts as an additional level.
+2. **Identify the footprint**: Estimate width and depth. Note any L-shapes, extensions, garages, or wings.
+3. **Map each floor**: For EACH floor level, identify exterior walls, interior walls (if visible), doors, and windows. Upper floors may have a different or smaller footprint.
+4. **Structural elements**: Look for columns (porch posts, structural supports), beams, and any visible framing.
+5. **Roof shape**: Note the roof type (gable, hip, flat, shed, dormer). Place the roof at the correct top level.
+6. **Stairs**: If the building has multiple floors, there MUST be stairs connecting them.
+
+CRITICAL: If you see two rows of windows vertically, that is a TWO-STORY building. Generate walls, slabs, doors, and windows for BOTH levels. Do NOT collapse everything to level 0.
+
+When multiple images are provided, cross-reference them:
+- Front photo shows window count and door placement
+- Side photos reveal building depth and side windows
+- Rear photos show back doors, windows, and any extensions
+
+Analyze the image(s) carefully. Generate the COMPLETE building with ALL floors visible.
 If the image is an exterior photo, count visible floor levels and infer the full layout.
 Remember: respond with ONLY the JSON array, nothing else.`;
 
@@ -400,39 +405,48 @@ export interface AiGenerateResult {
 
 export async function generateFloorPlan(
   apiKey: string,
-  imageFile: File,
+  imageFiles: File[],
   scaleHint?: string,
 ): Promise<AiGenerateResult> {
-  const { data, mediaType } = await fileToBase64(imageFile);
+  const images = await Promise.all(imageFiles.map(fileToBase64));
+
+  const imageCount = images.length;
+  const multiImageNote =
+    imageCount > 1
+      ? ` You have been provided ${imageCount} images of the same building from different angles/views. Cross-reference ALL images to get the most accurate and complete building model. Look for details visible in one image but not another (e.g., side windows, rear doors, upper floor layout).`
+      : "";
 
   const userText = scaleHint
-    ? `Analyze this image and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array. Scale hint: ${scaleHint}. Respond with ONLY the JSON array.`
-    : "Analyze this image and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array. Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Respond with ONLY the JSON array.";
+    ? `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Scale hint: ${scaleHint}. First reason step-by-step about the building structure, then output ONLY the JSON array.`
+    : `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Estimate reasonable dimensions in meters based on typical residential/commercial proportions. First reason step-by-step about the building structure, then output ONLY the JSON array.`;
 
   const client = new Anthropic({
     apiKey,
     dangerouslyAllowBrowser: true,
   });
 
+  // Build content array with all images
+  const content: Anthropic.MessageCreateParams["messages"][0]["content"] = [];
+  for (const { data, mediaType } of images) {
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data },
+    });
+  }
+  content.push({ type: "text", text: userText });
+
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 8192,
+    max_tokens: 16000,
+    thinking: {
+      type: "enabled",
+      budget_tokens: 8000,
+    },
     system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data },
-          },
-          { type: "text", text: userText },
-        ],
-      },
-    ],
+    messages: [{ role: "user", content }],
   });
 
-  // Extract text from response
+  // Extract text from response (skip thinking blocks)
   const textBlock = response.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("No text response received from AI");

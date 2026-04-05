@@ -835,6 +835,14 @@ function Home() {
         return;
       }
 
+      // Z — zoom to selected element
+      if (e.key === "z" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (selectedElement) {
+          viewer3DRef.current?.flyToElement(selectedElement.globalId);
+          return;
+        }
+      }
+
       // Tab — cycle wall alignment mode (left / center / right)
       if (e.key === "Tab" && creationTool === "wall") {
         e.preventDefault();
@@ -947,6 +955,9 @@ function Home() {
         onUngroupSelected={handleUngroupSelected}
         selectedElementIds={selectedElementIds}
         onOpenSchedule={(type) => setScheduleType(type)}
+        onZoomIn={() => viewer3DRef.current?.zoomIn()}
+        onZoomOut={() => viewer3DRef.current?.zoomOut()}
+        onZoomToFit={() => viewer3DRef.current?.zoomToFit()}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}

@@ -55,6 +55,9 @@ export type AnnotationTool =
 export interface Viewer3DHandle {
   flyToElement: (globalId: string) => void;
   flyToLevel: (height: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomToFit: () => void;
 }
 
 // ── BIM Authoring ──────────────────────────────────────────────

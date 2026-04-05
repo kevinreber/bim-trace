@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Multi-image AI generation** — AI Image to BIM modal now supports uploading up to 5 images of the same building from different angles; cross-references all images for more accurate and complete building models
+- **Navigation toolbar** — View ribbon tab now includes Zoom In, Zoom Out, and Fit All buttons for easier viewport navigation, especially on trackpads
+- **Z key zoom-to-selection** — pressing Z with a selected element zooms/flies the camera to that element (like Revit's zoom-to-selection)
+
 ### Changed
+- **AI Image to BIM — improved multi-story detection** — enabled extended thinking (chain-of-thought reasoning) for better building analysis; enhanced prompt with step-by-step reasoning strategy that explicitly identifies floor count from window rows, floor lines, and roof structure before generating elements
 - **AI Image to BIM — full building generation** — extended AI generation to produce complete multi-story buildings instead of just ground-floor walls; now generates walls, doors, windows, columns, slabs, roofs, stairs, ceilings, and beams across multiple levels; updated prompt with multi-story analysis strategy; preview modal shows counts for all element types and number of levels; increased max token output for larger buildings
 
 ### Added

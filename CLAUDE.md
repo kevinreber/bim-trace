@@ -130,6 +130,7 @@ When a door or window is hosted on a wall (`hostWallId`), the wall geometry auto
 | `Shift+Letter` | Activate creation tool (W=Wall, D=Door, C=Column, etc.) |
 | `1` / `2` / `3` / `4` | Single / 2-Up / 3-Up / 4-Up viewport layout |
 | `G` | Toggle snap-to-grid |
+| `Z` | Zoom to selected element |
 | `Escape` | Deselect tool |
 | `Delete` / `Backspace` | Delete selected element |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
