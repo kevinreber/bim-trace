@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example
+
 ### Added
 - **Multi-image AI generation** — AI Image to BIM modal now supports uploading up to 5 images of the same building from different angles; cross-references all images for more accurate and complete building models
 - **Navigation toolbar** — View ribbon tab now includes Zoom In, Zoom Out, and Fit All buttons for easier viewport navigation, especially on trackpads
