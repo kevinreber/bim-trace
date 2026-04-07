@@ -17,10 +17,11 @@ const SYSTEM_PROMPT = `You are a BIM (Building Information Modeling) assistant t
 
 CRITICAL RULES:
 1. You MUST respond with ONLY a raw JSON array — no markdown, no code fences, no explanation, no commentary.
-2. NEVER refuse to generate elements. Even if the image is not a perfect floor plan (e.g. an exterior photo, a sketch, a 3D render), do your best to infer a plausible COMPLETE building and generate ALL floors, roof, stairs, and structural elements.
-3. If you truly cannot infer any layout, return an empty array: []
-4. Your response must ALWAYS be valid JSON. No text before or after the JSON array.
-5. Generate the ENTIRE building — all visible floors, not just the ground floor.
+2. Do ALL your reasoning in the thinking block. The text response must contain ONLY the JSON array.
+3. NEVER refuse to generate elements. Even if the image is not a perfect floor plan (e.g. an exterior photo, a sketch, a 3D render), do your best to infer a plausible COMPLETE building and generate ALL floors, roof, stairs, and structural elements.
+4. If you truly cannot infer any layout, return an empty array: []
+5. Your response must ALWAYS be valid JSON. No text before or after the JSON array.
+6. Generate the ENTIRE building — all visible floors, not just the ground floor.
 
 ## BimElement Schema
 
@@ -106,33 +107,104 @@ Use these default dimensions unless the image clearly shows different proportion
 - Columns use start and end as the same point (center position)
 - Commonly placed at porch areas, structural supports, or decorative elements
 
-## Example Multi-Story Output
+## Example: Complex Residential Home with L-Shaped Footprint
+
+This example shows a home with a main body + left porch wing, steep gable roof, porch columns, and varied window sizes:
 
 [
-  { "id": "slab-g", "type": "slab", "name": "Ground Floor Slab", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "thickness": 0.25 }, "level": 0 },
-  { "id": "wall-1", "type": "wall", "name": "North Wall - Ground", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": -4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-2", "type": "wall", "name": "East Wall - Ground", "start": { "x": 6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "door-1", "type": "door", "name": "Entry Door", "start": { "x": 0, "z": -4 }, "end": { "x": 0, "z": -4 }, "params": { "height": 2.1, "width": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
-  { "id": "window-1", "type": "window", "name": "Front Window", "start": { "x": -3, "z": -4 }, "end": { "x": -3, "z": -4 }, "params": { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
-  { "id": "slab-1", "type": "slab", "name": "Level 1 Floor Slab", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": 4 }, "params": { "thickness": 0.25 }, "level": 3 },
-  { "id": "wall-L1-1", "type": "wall", "name": "North Wall - Level 1", "start": { "x": -6, "z": -4 }, "end": { "x": 6, "z": -4 }, "params": { "height": 3, "thickness": 0.3 }, "level": 3 },
-  { "id": "window-L1-1", "type": "window", "name": "Upper Window", "start": { "x": 0, "z": -4 }, "end": { "x": 0, "z": -4 }, "params": { "height": 1.2, "width": 1.0, "sillHeight": 0.9 }, "level": 3, "rotation": 0, "hostWallId": "wall-L1-1" },
-  { "id": "stair-1", "type": "stair", "name": "Main Staircase", "start": { "x": 2, "z": 0 }, "end": { "x": 2, "z": 3 }, "params": { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 17 }, "level": 0 },
-  { "id": "roof-1", "type": "roof", "name": "Main Roof", "start": { "x": -6.3, "z": -4.3 }, "end": { "x": 6.3, "z": 4.3 }, "params": { "height": 2.5, "thickness": 0.2, "overhang": 0.3 }, "level": 6 }
+  { "id": "slab-g", "type": "slab", "name": "Ground Floor Slab", "start": { "x": -7, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "thickness": 0.25 }, "level": 0 },
+  { "id": "wall-1", "type": "wall", "name": "Front Wall - Main Body", "start": { "x": -3, "z": -5 }, "end": { "x": 6, "z": -5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-2", "type": "wall", "name": "East Wall", "start": { "x": 6, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-3", "type": "wall", "name": "Rear Wall", "start": { "x": 6, "z": 5 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-4", "type": "wall", "name": "West Wall - Main Body", "start": { "x": -3, "z": 5 }, "end": { "x": -3, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-5", "type": "wall", "name": "Porch North Wall", "start": { "x": -3, "z": 2 }, "end": { "x": -7, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "wall-6", "type": "wall", "name": "Porch West Wall", "start": { "x": -7, "z": 2 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "door-1", "type": "door", "name": "Main Entry Door", "start": { "x": 1, "z": -5 }, "end": { "x": 1, "z": -5 }, "params": { "height": 2.4, "width": 1.5 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
+  { "id": "window-1", "type": "window", "name": "Large Picture Window Right", "start": { "x": 4, "z": -5 }, "end": { "x": 4, "z": -5 }, "params": { "height": 2.0, "width": 2.4, "sillHeight": 0.5 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
+  { "id": "window-2", "type": "window", "name": "Small Window Left", "start": { "x": -1.5, "z": -5 }, "end": { "x": -1.5, "z": -5 }, "params": { "height": 1.2, "width": 0.8, "sillHeight": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
+  { "id": "col-1", "type": "column", "name": "Porch Column Left", "start": { "x": -7, "z": 2 }, "end": { "x": -7, "z": 2 }, "params": { "height": 3, "radius": 0.15 }, "level": 0 },
+  { "id": "col-2", "type": "column", "name": "Porch Column Right", "start": { "x": -3, "z": 2 }, "end": { "x": -3, "z": 2 }, "params": { "height": 3, "radius": 0.15 }, "level": 0 },
+  { "id": "slab-1", "type": "slab", "name": "Upper Floor Slab", "start": { "x": -3, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "thickness": 0.25 }, "level": 3 },
+  { "id": "wall-L1-1", "type": "wall", "name": "Front Wall - Upper", "start": { "x": -1, "z": -5 }, "end": { "x": 4, "z": -5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 3 },
+  { "id": "window-L1-1", "type": "window", "name": "Upper Dormer Window", "start": { "x": 1.5, "z": -5 }, "end": { "x": 1.5, "z": -5 }, "params": { "height": 1.0, "width": 0.8, "sillHeight": 0.9 }, "level": 3, "rotation": 0, "hostWallId": "wall-L1-1" },
+  { "id": "stair-1", "type": "stair", "name": "Main Staircase", "start": { "x": 3, "z": 2 }, "end": { "x": 3, "z": 5 }, "params": { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 17 }, "level": 0 },
+  { "id": "roof-1", "type": "roof", "name": "Main Gable Roof", "start": { "x": -3.3, "z": -5.3 }, "end": { "x": 6.3, "z": 5.3 }, "params": { "height": 4.0, "thickness": 0.2, "overhang": 0.5 }, "level": 3 },
+  { "id": "roof-2", "type": "roof", "name": "Porch Roof", "start": { "x": -7.3, "z": 1.7 }, "end": { "x": -2.7, "z": 5.3 }, "params": { "height": 1.5, "thickness": 0.2, "overhang": 0.3 }, "level": 3 }
 ]
 
-## Analysis Strategy — THINK STEP BY STEP
+Key patterns in this example:
+- The L-shape is formed by separate wall segments with shared corners, NOT a single rectangle
+- Windows have VARIED sizes (large picture window 2.4m wide vs small window 0.8m wide)
+- The front door is wider than standard (double door = 1.5m)
+- Porch columns mark covered outdoor areas
+- Multiple roof elements cover different sections with different heights
+- Upper floor has a SMALLER footprint than ground floor (common in Cape Cod / dormer styles)
+- Roof height is steep (4.0m) for a gable style
 
-Before generating JSON, reason carefully about the building:
+## Depth & 3D Inference from 2D Photos
 
-1. **Count floors**: Look for horizontal bands of windows, floor lines, roof eaves, and visible floor separations. A two-story house has TWO rows of windows stacked vertically. A dormer or attic with windows counts as an additional level.
-2. **Identify the footprint**: Estimate width and depth. Note any L-shapes, extensions, garages, or wings.
-3. **Map each floor**: For EACH floor level, identify exterior walls, interior walls (if visible), doors, and windows. Upper floors may have a different or smaller footprint.
-4. **Structural elements**: Look for columns (porch posts, structural supports), beams, and any visible framing.
-5. **Roof shape**: Note the roof type (gable, hip, flat, shed, dormer). Place the roof at the correct top level.
-6. **Stairs**: If the building has multiple floors, there MUST be stairs connecting them.
+When analyzing exterior photos (not floor plans), use these techniques to infer the full 3D building:
 
-CRITICAL: If you see two rows of windows vertically, that is a TWO-STORY building. Generate walls, slabs, doors, and windows for BOTH levels. Do NOT collapse everything to level 0.
+### Estimating Building Depth (the Z axis — front to back)
+- **Roof ridge lines**: A visible ridge line indicates depth. A gable roof's ridge runs along the depth axis. The roof slope angle suggests the depth-to-height ratio.
+- **Perspective convergence**: Walls receding into the distance reveal depth. If a side wall is partially visible, estimate its length from the visible angle.
+- **Typical proportions**: Residential buildings are typically 8-12m deep. A building that appears roughly square from the front is likely 0.8-1.2x as deep as it is wide.
+- **Visible side walls**: If any side wall is visible, estimate its length. Count windows on the side to gauge depth (windows are typically spaced 2-3m apart).
+- **Chimneys and extensions**: A chimney near the back suggests the depth extends at least that far. Visible extensions (bump-outs, additions) add depth.
+- **Garage/wing setbacks**: Wings or garages that are set back reveal depth relationships.
+
+### Estimating Dimensions from Scale Cues
+- **Doors**: Standard entry door is ~0.9m wide × 2.1m tall — use as a scale reference.
+- **Windows**: Typical window ~1.0m wide × 1.2m tall. Window spacing on a facade helps estimate total wall length.
+- **Floor-to-floor height**: Typically 3m. Count floor levels by window rows.
+- **Brick/siding courses**: Standard brick is ~65mm high + 10mm mortar = 75mm per course.
+- **Human figures/cars**: If visible, use as scale references (car ~4.5m long, person ~1.7m tall).
+
+### Building Non-Rectangular Footprints
+- MOST residential buildings are NOT simple rectangles. Look for L-shapes, T-shapes, or wings.
+- Porches (covered outdoor areas with columns/posts) need their own wall segments and column elements.
+- Bay windows that project outward should be represented as angled wall segments.
+- If a building has clearly different roof sections (different heights, ridge directions), each section covers a different wing.
+- When the front facade has sections at different depths (one part closer to the street, another set back), model each section with its own wall segments.
+
+### Window Variety
+- Pay close attention to window SIZES. Buildings often have multiple window types:
+  - Large picture/display windows: 2.0-3.0m wide × 1.8-2.4m tall, sillHeight 0.3-0.5m
+  - Standard double-hung windows: 0.8-1.0m wide × 1.2-1.5m tall, sillHeight 0.9m
+  - Tall narrow windows: 0.5-0.7m wide × 1.5-2.0m tall
+  - Dormer windows: typically smaller, 0.6-0.8m wide
+  - Multi-pane grid windows (visible grilles/mullions) are still single window elements — just note the larger overall size
+- Count EVERY visible window and match its approximate size and position on the wall.
+- French doors or glass doors with sidelights should be modeled as a wider door (1.5-1.8m).
+
+### Porch & Entry Features
+- Covered porches have columns/posts — add column elements at each post location.
+- Arched openings indicate a porch with an open front — place columns at the arch spring points.
+- Front entry steps/stoops are not modeled but the door and any flanking sidelights/windows should be.
+- A recessed entry (set back from the main facade) means the entry wall is on a different Z-plane than the main front wall.
+
+## Analysis Strategy — THINK STEP BY STEP (in the thinking block)
+
+Use the thinking block to reason carefully — the text response must be ONLY JSON.
+
+1. **Scale reference**: Find a door or window to establish scale. A front door is ~0.9m wide, 2.1m tall. Use this to estimate all other dimensions.
+2. **Count floors**: Look for horizontal bands of windows, floor lines, roof eaves. Two rows of windows = TWO stories. Dormers with windows = additional level.
+3. **Trace the footprint shape**: Do NOT default to a rectangle. Walk along the front facade left to right — does the wall step forward or back? Are there wings, porches, or bump-outs? Sketch the full perimeter as wall segments. For buildings seen at an angle, trace the side wall too.
+4. **Estimate depth**: Use the roof slope, visible side walls, and typical proportions (depth ≈ 0.7-1.2× facade width for residential). A steep gable roof implies significant depth.
+5. **Map each floor**: For EACH floor, trace exterior walls (with different wall segments for different footprint sections). Upper floors often have a SMALLER footprint.
+6. **Count and size ALL windows**: Go left to right across the facade. Note each window's approximate size category (small/standard/large/picture). Large multi-pane windows may be 2-3× wider than standard ones. Don't miss any.
+7. **Doors**: Front entry, side doors, French doors. Double doors or doors with sidelights = wider width (1.2-1.8m).
+8. **Columns/posts**: Every porch post, every decorative column. Place them at the correct positions.
+9. **Multiple roofs**: Complex homes have 2-4 roof elements — main ridge, cross gable, porch roof, dormer roofs. Each has different height and coverage.
+10. **Stairs**: Multi-story buildings MUST have interior stairs connecting levels.
+
+### Common Mistakes to Avoid
+- DO NOT make a simple rectangle when the building clearly has wings, porches, or extensions
+- DO NOT make all windows the same size — buildings have varied window types
+- DO NOT forget porch columns/posts visible in the image
+- DO NOT use a low roof height for steep gable roofs (use 3.0-5.0m for steep residential gables)
+- DO NOT make the building too shallow (typical residential depth is 8-12m)
+- DO NOT forget to generate separate roof elements for different building sections
 
 When multiple images are provided, cross-reference them:
 - Front photo shows window count and door placement
@@ -417,8 +489,8 @@ export async function generateFloorPlan(
       : "";
 
   const userText = scaleHint
-    ? `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Scale hint: ${scaleHint}. First reason step-by-step about the building structure, then output ONLY the JSON array.`
-    : `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Estimate reasonable dimensions in meters based on typical residential/commercial proportions. First reason step-by-step about the building structure, then output ONLY the JSON array.`;
+    ? `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Scale hint: ${scaleHint}. Use the thinking block for all your reasoning and analysis. Respond with ONLY the JSON array.`
+    : `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Use the thinking block for all your reasoning and analysis. Respond with ONLY the JSON array.`;
 
   const client = new Anthropic({
     apiKey,
@@ -440,7 +512,7 @@ export async function generateFloorPlan(
     max_tokens: 16000,
     thinking: {
       type: "enabled",
-      budget_tokens: 8000,
+      budget_tokens: 10000,
     },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
@@ -465,10 +537,21 @@ export async function generateFloorPlan(
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    // The AI returned non-JSON text — extract a useful message for the user
-    const preview =
-      jsonText.length > 200 ? `${jsonText.slice(0, 200)}…` : jsonText;
-    throw new Error(`AI did not return valid JSON. Response: "${preview}"`);
+    // Try to extract a JSON array from the response text (model may have added text around it)
+    const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        parsed = JSON.parse(arrayMatch[0]);
+      } catch {
+        // Still not valid JSON
+      }
+    }
+
+    if (parsed === undefined) {
+      const preview =
+        jsonText.length > 200 ? `${jsonText.slice(0, 200)}…` : jsonText;
+      throw new Error(`AI did not return valid JSON. Response: "${preview}"`);
+    }
   }
 
   if (!Array.isArray(parsed)) {
