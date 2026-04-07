@@ -304,6 +304,12 @@ export default function AiGenerateModal({
                         setImagePreviews((prev) =>
                           prev.filter((_, idx) => idx !== i),
                         );
+                        setDepthResults((prev) => {
+                          const removed = prev[i];
+                          if (removed)
+                            URL.revokeObjectURL(removed.depthMapPreviewUrl);
+                          return prev.filter((_, idx) => idx !== i);
+                        });
                         setState("idle");
                         setResult(null);
                       }}

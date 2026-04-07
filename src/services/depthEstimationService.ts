@@ -17,11 +17,11 @@ import * as ort from "onnxruntime-web";
 const MODEL_INPUT_SIZE = 518;
 
 /**
- * Public CDN path for the Depth Anything V2 Small ONNX model.
+ * Public CDN path for the Depth Anything V2 Small ONNX model (via onnx-community).
  * ~100 MB, cached by the browser after first download.
  */
 const MODEL_URL =
-  "https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.onnx";
+  "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx";
 
 /** ImageNet normalization mean (RGB). */
 const MEAN: [number, number, number] = [0.485, 0.456, 0.406];
@@ -218,16 +218,16 @@ export async function estimateDepth(
   const img = await loadImage(file);
   const { tensor, origWidth, origHeight } = preprocessImage(img);
 
-  // Run inference
-  const feeds: Record<string, ort.Tensor> = { image: tensor };
+  // Run inference — input tensor name is "pixel_values" for HuggingFace ONNX exports
+  const feeds: Record<string, ort.Tensor> = { pixel_values: tensor };
   const results = await session.run(feeds);
 
-  // The model outputs a single tensor with shape [1, H, W] or [1, 1, H, W]
-  const outputTensor = Object.values(results)[0];
+  // Output tensor is "predicted_depth" with shape [1, H, W]
+  const outputTensor = results.predicted_depth ?? Object.values(results)[0];
   const depthData = outputTensor.data as Float32Array;
   const dims = outputTensor.dims;
 
-  // Determine output spatial dimensions
+  // Determine output spatial dimensions (typically [1, 518, 518])
   const modelH = dims.length === 4 ? dims[2] : dims[1];
   const modelW = dims.length === 4 ? dims[3] : dims[2];
 
