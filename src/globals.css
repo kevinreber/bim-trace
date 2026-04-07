@@ -841,6 +841,26 @@ body,
   margin-top: 4px;
 }
 
+.ai-modal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.ai-modal-toggle input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.ai-modal-toggle-label {
+  user-select: none;
+}
+
 .ai-modal-btn-sm {
   background: var(--ribbon-bg);
   border: 1px solid var(--border);

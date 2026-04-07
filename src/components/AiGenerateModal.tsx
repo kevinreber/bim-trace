@@ -1,9 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clearApiKey, getApiKey, setApiKey } from "../services/aiApiKeyStore";
 import {
   type AiGenerateResult,
   generateFloorPlan,
 } from "../services/aiFloorPlanService";
+import {
+  type DepthEstimationResult,
+  estimateDepth,
+  preloadDepthModel,
+} from "../services/depthEstimationService";
 import type { BimElement } from "../types";
 
 interface AiGenerateModalProps {
@@ -12,7 +17,12 @@ interface AiGenerateModalProps {
   onApply: (elements: BimElement[]) => void;
 }
 
-type ModalState = "idle" | "generating" | "preview" | "error";
+type ModalState =
+  | "idle"
+  | "estimating_depth"
+  | "generating"
+  | "preview"
+  | "error";
 
 export default function AiGenerateModal({
   isOpen,
@@ -28,9 +38,21 @@ export default function AiGenerateModal({
   const [result, setResult] = useState<AiGenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [depthResults, setDepthResults] = useState<
+    Array<DepthEstimationResult | null>
+  >([]);
+  const [depthEnabled, setDepthEnabled] = useState(true);
+  const [depthProgress, setDepthProgress] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputId = "ai-modal-api-key";
   const scaleHintInputId = "ai-modal-scale-hint";
+
+  // Preload the depth model when the modal opens
+  useEffect(() => {
+    if (isOpen && depthEnabled) {
+      preloadDepthModel();
+    }
+  }, [isOpen, depthEnabled]);
 
   const handleFiles = useCallback((files: File[]) => {
     const valid: File[] = [];
@@ -71,6 +93,13 @@ export default function AiGenerateModal({
       for (const url of prev) URL.revokeObjectURL(url);
       return [];
     });
+    setDepthResults((prev) => {
+      for (const d of prev) {
+        if (d) URL.revokeObjectURL(d.depthMapPreviewUrl);
+      }
+      return [];
+    });
+    setDepthProgress(null);
     setScaleHint("");
     setResult(null);
     setError(null);
@@ -86,14 +115,46 @@ export default function AiGenerateModal({
     }
 
     setApiKey(key);
-    setState("generating");
     setError(null);
+
+    let depthMaps: Array<{ base64: string } | null> | undefined;
+
+    // Step 1: Run depth estimation if enabled
+    if (depthEnabled) {
+      setState("estimating_depth");
+      try {
+        const results: Array<DepthEstimationResult | null> = [];
+        for (const file of imageFiles) {
+          try {
+            const depthResult = await estimateDepth(file, (phase, detail) => {
+              setDepthProgress(detail ?? phase);
+            });
+            results.push(depthResult);
+          } catch {
+            // If depth estimation fails for one image, continue without it
+            results.push(null);
+          }
+        }
+        setDepthResults(results);
+        depthMaps = results.map((r) =>
+          r ? { base64: r.depthMapBase64 } : null,
+        );
+        setDepthProgress(null);
+      } catch {
+        // If depth estimation fails entirely, continue without it
+        setDepthProgress(null);
+      }
+    }
+
+    // Step 2: Generate BIM elements
+    setState("generating");
 
     try {
       const res = await generateFloorPlan(
         key,
         imageFiles,
         scaleHint.trim() || undefined,
+        depthMaps,
       );
       setResult(res);
       setState("preview");
@@ -101,7 +162,7 @@ export default function AiGenerateModal({
       setError(err instanceof Error ? err.message : "Generation failed");
       setState("error");
     }
-  }, [imageFiles, apiKey, scaleHint]);
+  }, [imageFiles, apiKey, scaleHint, depthEnabled]);
 
   const handleApply = useCallback(() => {
     if (result) {
@@ -321,14 +382,68 @@ export default function AiGenerateModal({
           />
         </div>
 
+        {/* Depth Estimation Toggle */}
+        <div className="ai-modal-section">
+          <label className="ai-modal-toggle">
+            <input
+              type="checkbox"
+              checked={depthEnabled}
+              onChange={(e) => setDepthEnabled(e.target.checked)}
+            />
+            <span className="ai-modal-toggle-label">
+              Depth estimation
+              <span
+                style={{ fontWeight: "normal", color: "var(--text-muted)" }}
+              >
+                {" "}
+                — improves 3D accuracy using AI depth analysis
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* Depth Map Previews */}
+        {depthResults.length > 0 && depthResults.some((d) => d != null) && (
+          <div className="ai-modal-section">
+            <span className="ai-modal-label">Depth Maps</span>
+            <div className="ai-modal-image-grid">
+              {depthResults.map(
+                (d, i) =>
+                  d && (
+                    <div
+                      key={`depth-${imageFiles[i]?.name ?? i}`}
+                      className="ai-modal-image-thumb"
+                    >
+                      <img
+                        src={d.depthMapPreviewUrl}
+                        alt={`Depth map ${i + 1}`}
+                        className="ai-modal-preview-img"
+                      />
+                    </div>
+                  ),
+              )}
+            </div>
+            <p className="ai-modal-hint">
+              Darker = closer, lighter = farther. Used to improve 3D dimension
+              estimates.
+            </p>
+          </div>
+        )}
+
         {/* Error */}
         {error && <div className="ai-modal-error">{error}</div>}
 
         {/* Loading */}
+        {state === "estimating_depth" && (
+          <div className="ai-modal-loading">
+            <div className="ai-modal-spinner" />
+            <span>{depthProgress ?? "Estimating depth..."}</span>
+          </div>
+        )}
         {state === "generating" && (
           <div className="ai-modal-loading">
             <div className="ai-modal-spinner" />
-            <span>Analyzing floor plan...</span>
+            <span>Analyzing building and generating BIM elements...</span>
           </div>
         )}
 
@@ -423,10 +538,18 @@ export default function AiGenerateModal({
             <button
               type="button"
               className="ai-modal-btn primary"
-              disabled={imageFiles.length === 0 || state === "generating"}
+              disabled={
+                imageFiles.length === 0 ||
+                state === "generating" ||
+                state === "estimating_depth"
+              }
               onClick={handleGenerate}
             >
-              {state === "generating" ? "Generating..." : "Generate"}
+              {state === "estimating_depth"
+                ? "Estimating depth..."
+                : state === "generating"
+                  ? "Generating..."
+                  : "Generate"}
             </button>
           )}
           <button type="button" className="ai-modal-btn" onClick={handleClose}>

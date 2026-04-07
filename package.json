@@ -18,6 +18,7 @@
     "@thatopen/fragments": "^3.3.7",
     "camera-controls": "^3.1.2",
     "fabric": "^7.2.0",
+    "onnxruntime-web": "^1.24.3",
     "pdfjs-dist": "^5.5.207",
     "react": "^18",
     "react-dom": "^18",

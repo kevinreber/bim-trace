@@ -8,8 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **AI depth estimation (Depth Anything V2)** — client-side monocular depth estimation using Depth Anything V2 Small via ONNX Runtime Web; generates per-pixel depth maps from uploaded building photos; depth maps are sent alongside original images to Claude for improved 3D dimension accuracy; runs entirely in-browser with no API keys or server required; model is cached after first download (~100 MB); includes toggle to enable/disable and depth map preview in the AI modal
+
 ### Changed
 - **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example
+- **AI Image to BIM — depth map integration** — system prompt now includes guidance on interpreting AI-generated depth maps; Claude uses depth gradients to validate building depth estimates, detect setbacks and protruding elements, and confirm roof slope directions
 
 ### Added
 - **Multi-image AI generation** — AI Image to BIM modal now supports uploading up to 5 images of the same building from different angles; cross-references all images for more accurate and complete building models

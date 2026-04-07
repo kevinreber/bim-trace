@@ -72,7 +72,8 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/components/CreationToolbar.tsx`** — Legacy creation toolbar (replaced by RibbonToolbar)
 
 ### AI Services
-- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with extended thinking and multi-image support
+- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with extended thinking, multi-image support, and depth map integration
+- **`src/services/depthEstimationService.ts`** — Client-side monocular depth estimation using Depth Anything V2 (Small) via ONNX Runtime Web; produces grayscale depth maps that are sent to Claude alongside original images for improved 3D accuracy
 - **`src/services/aiApiKeyStore.ts`** — Browser-local API key persistence
 
 ## Documentation Policy
