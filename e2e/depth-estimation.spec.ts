@@ -40,7 +40,7 @@ async function ensureModelCached(): Promise<void> {
   }
 
   fs.mkdirSync(MODEL_CACHE_DIR, { recursive: true });
-  console.log("Downloading ONNX model to local cache (one-time, ~100 MB)...");
+  console.log("Downloading ONNX model to local cache (one-time, ~26 MB)...");
 
   // Use curl because Node.js fetch may be blocked in some CI environments
   execSync(`curl -L -o "${MODEL_CACHE_PATH}" "${MODEL_URL}"`, {
