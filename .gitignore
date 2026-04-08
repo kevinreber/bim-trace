@@ -6,6 +6,10 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
+e2e/.model-cache
+e2e/depth-map-actual.png
 
 # build
 /dist

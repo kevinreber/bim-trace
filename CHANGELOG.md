@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - **AI depth estimation (Depth Anything V2)** — client-side monocular depth estimation using Depth Anything V2 Small via ONNX Runtime Web; generates per-pixel depth maps from uploaded building photos; depth maps are sent alongside original images to Claude for improved 3D dimension accuracy; runs entirely in-browser with no API keys or server required; model is cached after first download (~100 MB); includes toggle to enable/disable and depth map preview in the AI modal
+- **E2E depth estimation tests** — Playwright integration test that validates the full depth estimation pipeline; uses a synthetic building image with known geometry, runs actual ONNX model inference in headless Chrome, and asserts that the depth map correctly shows near objects darker than far objects; includes visual screenshot regression via `toHaveScreenshot`
 
 ### Changed
 - **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example

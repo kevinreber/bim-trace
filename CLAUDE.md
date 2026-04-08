@@ -11,10 +11,13 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **2D Annotation**: Fabric.js
 - **Styling**: Tailwind CSS + custom CSS (Revit-inspired theme)
 - **Linting**: Biome
+- **E2E Testing**: Playwright (Chromium)
 
 ## Commands
 - `npm run dev` — Start dev server
 - `npm run build` — Production build
+- `npm run test:e2e` — Run Playwright E2E tests (downloads ONNX model on first run)
+- `npm run test:e2e:update` — Run E2E tests and update visual snapshots
 - `npx @biomejs/biome check src/` — Lint and format check
 - `npx @biomejs/biome check --write src/` — Auto-fix lint/format issues
 
