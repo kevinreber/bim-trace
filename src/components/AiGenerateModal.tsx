@@ -190,7 +190,8 @@ export default function AiGenerateModal({
             )}
           </div>
           <p className="ai-modal-hint">
-            Key is stored locally in your browser only.
+            Key is stored locally in your browser and sent securely to the
+            server. It is never logged or persisted server-side.
           </p>
         </div>
 
