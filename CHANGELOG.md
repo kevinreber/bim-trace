@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Window frame material memory leak** — hoisted per-window `MeshStandardMaterial` in `buildWindowMesh` to a shared module-level `WINDOW_FRAME_MATERIAL` constant so repeatedly editing/re-syncing windows no longer accumulates undisposed GPU materials
+- **Silent persistence failures** — `loadProject`, auto-save, and `clearProject` errors in `src/routes/index.tsx` now log to `console.warn` instead of being swallowed, making IndexedDB issues diagnosable
+- **Missing material fallback** — `getMaterialForElement` in `geometryBuilders.ts` now falls back to the concrete material if an element's material key is missing from `MATERIAL_LIBRARY`, preventing invisible meshes from an undefined material
+
+### Removed
+- **Dead `ELEMENT_MATERIALS` export** — removed the orphaned per-type material map in `geometryBuilders.ts` left over from the `MATERIAL_LIBRARY` refactor (091eb59); defaults now live exclusively in `DEFAULT_ELEMENT_MATERIAL` (`src/types.ts`)
+
 ### Changed
 - **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example
 

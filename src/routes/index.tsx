@@ -143,8 +143,8 @@ function Home() {
           showToast("Project restored from auto-save", "info");
         }
       })
-      .catch(() => {
-        // Silently fail — fresh start
+      .catch((err) => {
+        console.warn("Failed to load auto-saved project:", err);
       })
       .finally(() => setProjectLoaded(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,7 +162,9 @@ function Home() {
         activeLevel,
         gridLines,
         savedAt: Date.now(),
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn("Auto-save failed:", err);
+      });
     }, 1000);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -221,7 +223,9 @@ function Home() {
     setSelectedElementIds([]);
     undoStackRef.current = [];
     redoStackRef.current = [];
-    clearProject().catch(() => {});
+    clearProject().catch((err) => {
+      console.warn("Failed to clear persisted project:", err);
+    });
     showToast("New project created", "info");
   }, [showToast]);
 

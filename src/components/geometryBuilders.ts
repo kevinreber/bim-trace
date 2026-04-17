@@ -1,86 +1,6 @@
 import * as THREE from "three";
-import type { BimElement, BimElementType, BimMaterialType } from "@/types";
+import type { BimElement, BimMaterialType } from "@/types";
 import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
-
-// ── Materials ──────────────────────────────────────────────────
-
-export const ELEMENT_MATERIALS: Record<
-  BimElementType,
-  THREE.MeshStandardMaterial
-> = {
-  wall: new THREE.MeshStandardMaterial({ color: 0xe8e0d4, roughness: 0.9 }),
-  column: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 }),
-  slab: new THREE.MeshStandardMaterial({ color: 0xbab5ab, roughness: 0.85 }),
-  door: new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.65 }),
-  window: new THREE.MeshStandardMaterial({
-    color: 0x87ceeb,
-    roughness: 0.1,
-    transparent: true,
-    opacity: 0.5,
-    metalness: 0.2,
-  }),
-  beam: new THREE.MeshStandardMaterial({
-    color: 0xa0a0a0,
-    roughness: 0.5,
-    metalness: 0.3,
-  }),
-  ceiling: new THREE.MeshStandardMaterial({
-    color: 0xf5f5f0,
-    roughness: 0.95,
-  }),
-  roof: new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.85 }),
-  stair: new THREE.MeshStandardMaterial({ color: 0xc8b89a, roughness: 0.8 }),
-  railing: new THREE.MeshStandardMaterial({
-    color: 0x404040,
-    roughness: 0.4,
-    metalness: 0.6,
-  }),
-  curtainWall: new THREE.MeshStandardMaterial({
-    color: 0x6ec6e6,
-    roughness: 0.05,
-    transparent: true,
-    opacity: 0.45,
-    metalness: 0.3,
-  }),
-  table: new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.7 }),
-  chair: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.75 }),
-  shelving: new THREE.MeshStandardMaterial({
-    color: 0x9e7c4f,
-    roughness: 0.7,
-  }),
-  desk: new THREE.MeshStandardMaterial({ color: 0x7a5c3c, roughness: 0.7 }),
-  toilet: new THREE.MeshStandardMaterial({
-    color: 0xf0f0f0,
-    roughness: 0.3,
-    metalness: 0.1,
-  }),
-  sink: new THREE.MeshStandardMaterial({
-    color: 0xf5f5f5,
-    roughness: 0.3,
-    metalness: 0.1,
-  }),
-  duct: new THREE.MeshStandardMaterial({
-    color: 0x808080,
-    roughness: 0.5,
-    metalness: 0.4,
-  }),
-  pipe: new THREE.MeshStandardMaterial({
-    color: 0x606060,
-    roughness: 0.4,
-    metalness: 0.5,
-  }),
-  lightFixture: new THREE.MeshStandardMaterial({
-    color: 0xe0e0e0,
-    roughness: 0.3,
-    metalness: 0.2,
-  }),
-  room: new THREE.MeshStandardMaterial({
-    color: 0x93c5fd,
-    roughness: 0.9,
-    transparent: true,
-    opacity: 0.2,
-  }),
-};
 
 // ── Material Library ──────────────────────────────────────────
 
@@ -137,7 +57,7 @@ export function getMaterialForElement(
   el: BimElement,
 ): THREE.MeshStandardMaterial {
   const matKey = el.material ?? DEFAULT_ELEMENT_MATERIAL[el.type];
-  return MATERIAL_LIBRARY[matKey];
+  return MATERIAL_LIBRARY[matKey] ?? MATERIAL_LIBRARY.concrete;
 }
 
 // ── Ghost / Snap Materials ────────────────────────────────────
@@ -159,6 +79,11 @@ export const INVALID_GHOST_MATERIAL = new THREE.MeshStandardMaterial({
 export const SNAP_INDICATOR_MAT = new THREE.MeshBasicMaterial({
   color: 0x4ade80,
   depthTest: false,
+});
+
+const WINDOW_FRAME_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xdcdcdc,
+  roughness: 0.4,
 });
 
 // ── Wall opening interface ────────────────────────────────────
@@ -297,36 +222,32 @@ export function buildWindowMesh(
     mesh.rotation.y = rotation;
   }
 
-  const frameMat = new THREE.MeshStandardMaterial({
-    color: 0xdcdcdc,
-    roughness: 0.4,
-  });
   const ft = 0.04;
 
   const topBar = new THREE.Mesh(
     new THREE.BoxGeometry(width + ft, ft, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   topBar.position.set(0, height / 2, 0);
   mesh.add(topBar);
 
   const bottomBar = new THREE.Mesh(
     new THREE.BoxGeometry(width + ft, ft, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   bottomBar.position.set(0, -height / 2, 0);
   mesh.add(bottomBar);
 
   const leftBar = new THREE.Mesh(
     new THREE.BoxGeometry(ft, height, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   leftBar.position.set(-width / 2, 0, 0);
   mesh.add(leftBar);
 
   const rightBar = new THREE.Mesh(
     new THREE.BoxGeometry(ft, height, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   rightBar.position.set(width / 2, 0, 0);
   mesh.add(rightBar);

@@ -109,7 +109,7 @@ When releasing a version:
 1. Add the type to `BimElementType` union in `src/types.ts`
 2. Add params interface to `BimElementParams` in `src/types.ts`
 3. Add defaults to `DEFAULT_PARAMS` in `src/types.ts`
-4. Add material to `ELEMENT_MATERIALS` in `geometryBuilders.ts`
+4. Add default material mapping to `DEFAULT_ELEMENT_MATERIAL` in `src/types.ts` (resolved via `getMaterialForElement` → `MATERIAL_LIBRARY` in `geometryBuilders.ts`)
 5. Create `buildXxxMesh()` geometry builder in `geometryBuilders.ts`
 6. Add case to `buildMeshForElement()` switch in `geometryBuilders.ts`
 7. Add ghost preview case in `updateGhostPreview()` in `Viewer3D.tsx`
