@@ -95,11 +95,14 @@ export default function ViewCube({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
   const hoverOverlayRef = useRef<THREE.Mesh | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rafRef = useRef<number | null>(null);
-  const hoverDirRef = useRef<ViewDirection | null>(null);
+
+  // Parent passes inline arrow props, so their identity changes each render.
+  // Keep the latest `getCameraState` in a ref so the setup effect can stay
+  // mount-once and avoid tearing down the Three.js scene every render.
+  const getCameraStateRef = useRef(getCameraState);
+  getCameraStateRef.current = getCameraState;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,10 +115,8 @@ export default function ViewCube({
     });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(CUBE_SIZE, CUBE_SIZE, false);
-    rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
     camera.position.set(2.2, 1.6, 2.2);
@@ -166,15 +167,15 @@ export default function ViewCube({
 
     const tick = () => {
       if (disposed) return;
-      const state = getCameraState();
-      if (state && cameraRef.current) {
+      const state = getCameraStateRef.current();
+      if (state) {
         const offset = state.position.clone().sub(state.target);
         const len = offset.length();
         if (len > 1e-6) {
           offset.normalize().multiplyScalar(3);
-          cameraRef.current.position.copy(offset);
-          cameraRef.current.up.copy(state.up);
-          cameraRef.current.lookAt(0, 0, 0);
+          camera.position.copy(offset);
+          camera.up.copy(state.up);
+          camera.lookAt(0, 0, 0);
         }
       }
       renderer.render(scene, camera);
@@ -196,7 +197,7 @@ export default function ViewCube({
       (hoverOverlay.material as THREE.Material).dispose();
       renderer.dispose();
     };
-  }, [getCameraState]);
+  }, []);
 
   // ── Pointer interaction ────────────────────────────────────
 
@@ -223,7 +224,6 @@ export default function ViewCube({
     if (!overlay) return;
     if (!dir) {
       overlay.visible = false;
-      hoverDirRef.current = null;
       return;
     }
     // Size the overlay: 1 on axes the region spans, ~0.4 on axes it pins to.
@@ -231,7 +231,6 @@ export default function ViewCube({
     overlay.scale.set(span(dir[0]), span(dir[1]), span(dir[2]));
     overlay.position.set(dir[0] * 0.3, dir[1] * 0.3, dir[2] * 0.3);
     overlay.visible = true;
-    hoverDirRef.current = dir;
   }, []);
 
   const handleMouseMove = useCallback(
