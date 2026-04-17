@@ -50,6 +50,7 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 - **`src/components/ContextMenu.tsx`** — Right-click context menus on 3D elements (Select, Copy, Hide Category, Delete)
 - **`src/components/ScheduleModal.tsx`** — Auto-generated tabular schedules for element types (Door, Window, Room, Wall, All)
 - **`src/components/AiGenerateModal.tsx`** — AI Image to BIM modal with multi-image upload and generation preview
+- **`src/components/ViewCube.tsx`** — Revit-style 3D navigation cube overlay (top-right of perspective 3D viewports); mini Three.js scene that mirrors main camera orientation; click faces/edges/corners to snap the camera via `Viewer3DHandle.setViewDirection`; hidden in orthographic views (plan/elevation/section)
 
 ### 3D Engine
 - **`src/components/geometryBuilders.ts`** — All geometry builder functions (`buildWallMesh`, `buildDoorMesh`, etc.), materials, and wall opening computation (`computeWallOpenings`); extracted from Viewer3D

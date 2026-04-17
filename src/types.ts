@@ -58,6 +58,8 @@ export interface Viewer3DHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomToFit: () => void;
+  /** Move the camera to look at the current target from the given direction (used by the ViewCube). */
+  setViewDirection: (dir: [number, number, number]) => void;
 }
 
 // ── BIM Authoring ──────────────────────────────────────────────

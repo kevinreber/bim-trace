@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **AI Image to BIM — optimized depth & detail analysis** — significantly improved 3D inference from 2D exterior photos; added depth estimation guidance using roof slopes, perspective cues, and architectural proportions; enhanced prompt to detect non-rectangular footprints (L-shapes, wings, porches), varied window sizes (picture windows vs standard), porch columns/posts, and multi-section roofs; added JSON extraction fallback for robustness; fixed prompt contradiction that caused JSON parsing failures; replaced simple rectangle example with complex residential L-shaped home example
 
 ### Added
+- **3D ViewCube** — Revit-style navigation cube overlay in the top-right of 3D viewports; click faces to snap to axial views (Top/Bottom/Front/Back/Left/Right), edges for 2-axis diagonal views, or corners for isometric views; cube orientation mirrors the main camera in real-time, and a Home button resets to the default 3D perspective
 - **Multi-image AI generation** — AI Image to BIM modal now supports uploading up to 5 images of the same building from different angles; cross-references all images for more accurate and complete building models
 - **Navigation toolbar** — View ribbon tab now includes Zoom In, Zoom Out, and Fit All buttons for easier viewport navigation, especially on trackpads
 - **Z key zoom-to-selection** — pressing Z with a selected element zooms/flies the camera to that element (like Revit's zoom-to-selection)
