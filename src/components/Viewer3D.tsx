@@ -50,6 +50,7 @@ import {
   INVALID_GHOST_MATERIAL,
   SNAP_INDICATOR_MAT,
 } from "./geometryBuilders";
+import ViewCube, { type ViewDirection } from "./ViewCube";
 
 // ── Props ──────────────────────────────────────────────────────
 
@@ -539,6 +540,30 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
           center.x,
           center.y,
           center.z,
+          true,
+        );
+      },
+      setViewDirection(dir) {
+        const world = worldRef.current;
+        if (!world) return;
+        const controls = world.camera.controls;
+        const pos = new THREE.Vector3();
+        const target = new THREE.Vector3();
+        controls.getPosition(pos);
+        controls.getTarget(target);
+        let distance = pos.distanceTo(target);
+        if (!Number.isFinite(distance) || distance < 1) distance = 20;
+        const offset = new THREE.Vector3(dir[0], dir[1], dir[2]);
+        if (offset.lengthSq() < 1e-6) return;
+        offset.normalize().multiplyScalar(distance);
+        const newPos = target.clone().add(offset);
+        controls.setLookAt(
+          newPos.x,
+          newPos.y,
+          newPos.z,
+          target.x,
+          target.y,
+          target.z,
           true,
         );
       },
@@ -1967,6 +1992,51 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             </label>
           </div>
         </div>
+      )}
+
+      {!cameraPreset?.orthographic && (
+        <ViewCube
+          getCameraState={() => {
+            const world = worldRef.current;
+            if (!world) return null;
+            const controls = world.camera.controls;
+            const position = new THREE.Vector3();
+            const target = new THREE.Vector3();
+            controls.getPosition(position);
+            controls.getTarget(target);
+            const up = world.camera.three.up.clone();
+            return { position, target, up };
+          }}
+          onSelectView={(dir: ViewDirection) => {
+            const world = worldRef.current;
+            if (!world) return;
+            const controls = world.camera.controls;
+            const pos = new THREE.Vector3();
+            const target = new THREE.Vector3();
+            controls.getPosition(pos);
+            controls.getTarget(target);
+            let distance = pos.distanceTo(target);
+            if (!Number.isFinite(distance) || distance < 1) distance = 20;
+            const offset = new THREE.Vector3(dir[0], dir[1], dir[2])
+              .normalize()
+              .multiplyScalar(distance);
+            const newPos = target.clone().add(offset);
+            controls.setLookAt(
+              newPos.x,
+              newPos.y,
+              newPos.z,
+              target.x,
+              target.y,
+              target.z,
+              true,
+            );
+          }}
+          onHome={() => {
+            const world = worldRef.current;
+            if (!world) return;
+            world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10, true);
+          }}
+        />
       )}
     </div>
   );
