@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Vertical gridlines** — Gridlines now extend vertically as semi-transparent planes, making them visible in elevation and section views (not just plan view); vertical dashed lines mark gridline positions in all orthographic views
+- **Level indicators in 3D views** — Levels are now rendered as horizontal dashed green lines with Revit-style triangle markers and labels; visible in elevation and section views to help align elements to story heights
+- **Viewer3D init error handling** — 3D viewport initialization is now wrapped in try-catch to prevent full-app crashes (e.g. when opening 4-up layout with multiple WebGL contexts)
+- **Unit system toggle (metric/imperial)** — Click the `m`/`ft` button in the status bar to switch between meters and feet; all level heights, ribbon level selector, and 3D level labels update accordingly; internal storage remains in meters with conversion on display/input
+- **2D CAD rendering for orthographic views** — Plan, elevation, and section views now render elements as clean line drawings with faint fills instead of solid 3D meshes; only the perspective 3D view shows full materials; gives a Revit-style CAD look to architectural drawings
+
 ### Changed
 - **Server-side API proxy for AI Image to BIM** — Anthropic API calls now route through a server-side proxy (`/api/generate-floor-plan`) instead of calling Anthropic directly from the browser; eliminates `dangerouslyAllowBrowser` usage
 - **BYOK (Bring Your Own Key) pattern** — users enter their Anthropic API key in the modal, key is stored in localStorage and sent per-request to the server proxy; the server never logs or persists the key; optional `ANTHROPIC_API_KEY` env var serves as fallback

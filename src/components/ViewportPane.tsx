@@ -7,9 +7,11 @@ import type {
   Dimension3D,
   GridLine,
   GridSize,
+  Level,
   Markup,
   SelectedElement,
   SpatialNode,
+  UnitSystem,
   Viewer3DHandle,
   ViewPane,
   ViewPaneType,
@@ -54,6 +56,8 @@ interface ViewportPaneProps {
   dimensions3D?: Dimension3D[];
   onDimension3DCreated?: (dim: Dimension3D) => void;
   onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
+  levels?: Level[];
+  unitSystem?: UnitSystem;
 }
 
 const VIEW_TYPE_OPTIONS: { value: ViewPaneType; label: string }[] = [
@@ -171,6 +175,8 @@ export default function ViewportPane({
   dimensions3D,
   onDimension3DCreated,
   onContextMenu,
+  levels,
+  unitSystem,
 }: ViewportPaneProps) {
   const localPdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const effectivePdfRef = pdfCanvasRef ?? localPdfCanvasRef;
@@ -241,6 +247,8 @@ export default function ViewportPane({
             dimensions3D={dimensions3D}
             onDimension3DCreated={onDimension3DCreated}
             onContextMenu={onContextMenu}
+            levels={levels}
+            unitSystem={unitSystem}
           />
         ) : (
           <div className="h-full flex flex-col">

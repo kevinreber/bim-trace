@@ -11,10 +11,12 @@ import type {
   SavedView,
   ScheduleType,
   SelectedElement,
+  UnitSystem,
   ViewLayout,
   ViewPane,
   ViewPaneType,
 } from "@/types";
+import { formatUnit } from "@/types";
 
 /* ------------------------------------------------------------------ */
 /*  Revit-style Ribbon Toolbar                                         */
@@ -78,6 +80,7 @@ interface RibbonToolbarProps {
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   onZoomToFit?: () => void;
+  unitSystem: UnitSystem;
 }
 
 type RibbonTab = "architecture" | "annotate" | "view" | "modify" | "manage";
@@ -795,6 +798,7 @@ export default function RibbonToolbar({
   onZoomIn,
   onZoomOut,
   onZoomToFit,
+  unitSystem,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
 
@@ -1663,7 +1667,7 @@ export default function RibbonToolbar({
                   >
                     {levels.map((level) => (
                       <option key={level.id} value={level.id}>
-                        {level.name} ({level.height}m)
+                        {level.name} ({formatUnit(level.height, unitSystem)})
                       </option>
                     ))}
                   </select>

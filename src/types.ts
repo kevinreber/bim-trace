@@ -392,3 +392,31 @@ export const DEFAULT_LEVELS: Level[] = [
   { id: "level-2", name: "Level 2", height: 6, visible: true },
   { id: "roof", name: "Roof", height: 9, visible: true },
 ];
+
+// ── Unit System ────────────────────────────────────────────────
+
+export type UnitSystem = "metric" | "imperial";
+
+const M_TO_FT = 3.28084;
+
+/** Convert an internal value (meters) to display value in the given unit. */
+export function toDisplayUnit(meters: number, unit: UnitSystem): number {
+  return unit === "imperial" ? meters * M_TO_FT : meters;
+}
+
+/** Convert a display value back to internal meters. */
+export function fromDisplayUnit(value: number, unit: UnitSystem): number {
+  return unit === "imperial" ? value / M_TO_FT : value;
+}
+
+/** Short label for the active unit system. */
+export function unitLabel(unit: UnitSystem): string {
+  return unit === "imperial" ? "ft" : "m";
+}
+
+/** Format a value for display with appropriate precision. */
+export function formatUnit(meters: number, unit: UnitSystem): string {
+  const val = toDisplayUnit(meters, unit);
+  const decimals = unit === "imperial" ? 1 : 1;
+  return `${val.toFixed(decimals)} ${unitLabel(unit)}`;
+}

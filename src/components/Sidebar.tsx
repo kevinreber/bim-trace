@@ -5,7 +5,9 @@ import type {
   Markup,
   SelectedElement,
   SpatialNode,
+  UnitSystem,
 } from "@/types";
+import { formatUnit, fromDisplayUnit, toDisplayUnit, unitLabel } from "@/types";
 import ElementEditor from "./ElementEditor";
 import MarkupList from "./MarkupList";
 import PropertyPanel from "./PropertyPanel";
@@ -31,6 +33,7 @@ interface ProjectBrowserProps {
   onActiveLevelChange: (id: string) => void;
   onLevelsChange: (levels: Level[]) => void;
   onLevelNavigate?: (levelId: string) => void;
+  unitSystem: UnitSystem;
 }
 
 interface PropertiesPanelProps {
@@ -161,12 +164,14 @@ function LevelManager({
   onActiveLevelChange,
   onLevelsChange,
   onLevelNavigate,
+  unitSystem,
 }: {
   levels: Level[];
   activeLevel: string;
   onActiveLevelChange: (id: string) => void;
   onLevelsChange: (levels: Level[]) => void;
   onLevelNavigate?: (levelId: string) => void;
+  unitSystem: UnitSystem;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -294,16 +299,17 @@ function LevelManager({
 
             <input
               type="number"
-              value={level.height}
-              step={0.5}
+              value={Number(toDisplayUnit(level.height, unitSystem).toFixed(2))}
+              step={unitSystem === "imperial" ? 1 : 0.5}
               onChange={(e) => {
                 const val = Number.parseFloat(e.target.value);
-                if (!Number.isNaN(val)) updateLevelHeight(level.id, val);
+                if (!Number.isNaN(val))
+                  updateLevelHeight(level.id, fromDisplayUnit(val, unitSystem));
               }}
               className="prop-input"
               style={{ width: 52, textAlign: "right" }}
             />
-            <span className="prop-unit">m</span>
+            <span className="prop-unit">{unitLabel(unitSystem)}</span>
 
             <button
               type="button"
@@ -367,6 +373,7 @@ export function ProjectBrowser({
   onActiveLevelChange,
   onLevelsChange,
   onLevelNavigate,
+  unitSystem,
 }: ProjectBrowserProps) {
   const [activeTab, setActiveTab] = useState<BrowserTab>("tree");
 
@@ -507,6 +514,7 @@ export function ProjectBrowser({
             onActiveLevelChange={onActiveLevelChange}
             onLevelsChange={onLevelsChange}
             onLevelNavigate={onLevelNavigate}
+            unitSystem={unitSystem}
           />
         )}
       </div>
