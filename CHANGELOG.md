@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **AI model selector** — users can now toggle between Claude Opus 4 and Claude Sonnet 4 in the AI Image to BIM modal; Opus (default) uses higher thinking budget (40k tokens) and output limits (32k tokens) for significantly more accurate 3D model generation from photos
+
 ### Changed
 - **Server-side API proxy for AI Image to BIM** — Anthropic API calls now route through a server-side proxy (`/api/generate-floor-plan`) instead of calling Anthropic directly from the browser; eliminates `dangerouslyAllowBrowser` usage
 - **BYOK (Bring Your Own Key) pattern** — users enter their Anthropic API key in the modal, key is stored in localStorage and sent per-request to the server proxy; the server never logs or persists the key; optional `ANTHROPIC_API_KEY` env var serves as fallback
