@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { clearApiKey, getApiKey, setApiKey } from "../services/aiApiKeyStore";
 import {
+  AI_MODELS,
   type AiGenerateResult,
+  type AiModelId,
   generateFloorPlan,
 } from "../services/aiFloorPlanService";
 import type { BimElement } from "../types";
@@ -27,10 +29,14 @@ export default function AiGenerateModal({
   const [scaleHint, setScaleHint] = useState("");
   const [result, setResult] = useState<AiGenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<AiModelId>(
+    AI_MODELS[0].id,
+  );
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputId = "ai-modal-api-key";
   const scaleHintInputId = "ai-modal-scale-hint";
+  const modelSelectId = "ai-modal-model";
 
   const handleFiles = useCallback((files: File[]) => {
     const valid: File[] = [];
@@ -94,6 +100,7 @@ export default function AiGenerateModal({
         key,
         imageFiles,
         scaleHint.trim() || undefined,
+        selectedModel,
       );
       setResult(res);
       setState("preview");
@@ -101,7 +108,7 @@ export default function AiGenerateModal({
       setError(err instanceof Error ? err.message : "Generation failed");
       setState("error");
     }
-  }, [imageFiles, apiKey, scaleHint]);
+  }, [imageFiles, apiKey, scaleHint, selectedModel]);
 
   const handleApply = useCallback(() => {
     if (result) {
@@ -192,6 +199,28 @@ export default function AiGenerateModal({
           <p className="ai-modal-hint">
             Key is stored locally in your browser and sent securely to the
             server. It is never logged or persisted server-side.
+          </p>
+        </div>
+
+        {/* Model Selection */}
+        <div className="ai-modal-section">
+          <label className="ai-modal-label" htmlFor={modelSelectId}>
+            Model
+          </label>
+          <select
+            id={modelSelectId}
+            className="ai-modal-input"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value as AiModelId)}
+          >
+            {AI_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <p className="ai-modal-hint">
+            Opus produces more accurate models but costs more and takes longer.
           </p>
         </div>
 

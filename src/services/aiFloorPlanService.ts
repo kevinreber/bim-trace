@@ -270,10 +270,18 @@ export interface AiGenerateResult {
   levelCount: number;
 }
 
+export type AiModelId = "claude-opus-4-20250514" | "claude-sonnet-4-20250514";
+
+export const AI_MODELS: { id: AiModelId; label: string }[] = [
+  { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
+  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+];
+
 export async function generateFloorPlan(
   apiKey: string,
   imageFiles: File[],
   scaleHint?: string,
+  model?: AiModelId,
 ): Promise<AiGenerateResult> {
   const images = await Promise.all(imageFiles.map(fileToBase64));
 
@@ -287,6 +295,7 @@ export async function generateFloorPlan(
         mediaType,
       })),
       scaleHint: scaleHint || undefined,
+      model: model || "claude-opus-4-20250514",
     }),
   });
 
