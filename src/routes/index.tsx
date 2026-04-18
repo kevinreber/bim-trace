@@ -30,13 +30,20 @@ import type {
   SelectedElement,
   SpatialNode,
   UndoAction,
+  UnitSystem,
   Viewer3DHandle,
   ViewLayout,
   ViewPane,
   ViewPaneType,
   WallAlignMode,
 } from "@/types";
-import { DEFAULT_LEVELS, DEFAULT_PANES, VIEW_PANE_LABELS } from "@/types";
+import {
+  DEFAULT_LEVELS,
+  DEFAULT_PANES,
+  formatUnit,
+  unitLabel,
+  VIEW_PANE_LABELS,
+} from "@/types";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -82,6 +89,9 @@ function Home() {
   // Level management
   const [levels, setLevels] = useState<Level[]>(DEFAULT_LEVELS);
   const [activeLevel, setActiveLevel] = useState<string>("ground");
+
+  // Unit system (metric = meters, imperial = feet)
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>("metric");
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -958,6 +968,7 @@ function Home() {
         onZoomIn={() => viewer3DRef.current?.zoomIn()}
         onZoomOut={() => viewer3DRef.current?.zoomOut()}
         onZoomToFit={() => viewer3DRef.current?.zoomToFit()}
+        unitSystem={unitSystem}
       />
 
       {/* ── Main workspace: Browser | Viewport(s) | Properties ── */}
@@ -979,6 +990,7 @@ function Home() {
             onActiveLevelChange={setActiveLevel}
             onLevelsChange={setLevels}
             onLevelNavigate={handleLevelNavigate}
+            unitSystem={unitSystem}
           />
         </div>
 
@@ -1042,6 +1054,8 @@ function Home() {
                   dimensions3D={dimensions3D}
                   onDimension3DCreated={handleDimension3DCreated}
                   onContextMenu={handleContextMenu}
+                  levels={levels}
+                  unitSystem={unitSystem}
                 />
               );
             })}
@@ -1104,7 +1118,8 @@ function Home() {
           )}
           <span className="status-indicator">
             <span className="status-dot blue" />
-            Level: {activeLevelName} ({activeLevelHeight}m)
+            Level: {activeLevelName} (
+            {formatUnit(activeLevelHeight, unitSystem)})
           </span>
           {bimElements.length > 0 && (
             <span className="status-indicator">
@@ -1119,6 +1134,26 @@ function Home() {
               {selectedElementIds.length} selected
             </span>
           )}
+          <button
+            type="button"
+            onClick={() =>
+              setUnitSystem((u) => (u === "metric" ? "imperial" : "metric"))
+            }
+            className="status-indicator"
+            style={{
+              cursor: "pointer",
+              background: "var(--bg-tertiary)",
+              border: "1px solid var(--border)",
+              borderRadius: 3,
+              padding: "1px 6px",
+              fontSize: 11,
+              color: "var(--accent-blue)",
+              fontWeight: 600,
+            }}
+            title="Toggle between metric (m) and imperial (ft)"
+          >
+            {unitSystem === "metric" ? "m" : "ft"}
+          </button>
           <span style={{ color: "var(--text-muted)" }}>
             Shift+Key = Create | G = Snap | Tab = Align | Ctrl+Click =
             Multi-select

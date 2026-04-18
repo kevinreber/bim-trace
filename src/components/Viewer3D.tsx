@@ -17,11 +17,14 @@ import type {
   Dimension3D,
   GridLine,
   GridSize,
+  Level,
   SelectedElement,
   SpatialNode,
+  UnitSystem,
   Viewer3DHandle,
   WallAlignMode,
 } from "@/types";
+import { formatUnit } from "@/types";
 import {
   buildBeamMesh,
   buildCeilingMesh,
@@ -76,6 +79,8 @@ interface Viewer3DProps {
   dimensions3D?: Dimension3D[];
   onDimension3DCreated?: (dim: Dimension3D) => void;
   onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
+  levels?: Level[];
+  unitSystem?: UnitSystem;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -135,6 +140,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     dimensions3D = [],
     onDimension3DCreated,
     onContextMenu,
+    levels = [],
+    unitSystem = "metric",
   },
   ref,
 ) {
@@ -204,90 +211,120 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   // Dimension labels
   const dimensionLabelsRef = useRef<THREE.Sprite[]>([]);
 
+  // Level line objects rendered in 3D
+  const levelObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
+
   // ── Scene setup ────────────────────────────────────────────
+
+  const [initError, setInitError] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const components = new OBC.Components();
-    componentsRef.current = components;
+    let components: OBC.Components;
+    try {
+      components = new OBC.Components();
+      componentsRef.current = components;
 
-    const worlds = components.get(OBC.Worlds);
-    const world = worlds.create<
-      OBC.SimpleScene,
-      OBC.OrthoPerspectiveCamera,
-      OBC.SimpleRenderer
-    >();
-    worldRef.current = world;
+      const worlds = components.get(OBC.Worlds);
+      const world = worlds.create<
+        OBC.SimpleScene,
+        OBC.OrthoPerspectiveCamera,
+        OBC.SimpleRenderer
+      >();
+      worldRef.current = world;
 
-    world.scene = new OBC.SimpleScene(components);
-    world.renderer = new OBC.SimpleRenderer(components, container);
-    world.camera = new OBC.OrthoPerspectiveCamera(components);
+      world.scene = new OBC.SimpleScene(components);
+      world.renderer = new OBC.SimpleRenderer(components, container);
+      world.camera = new OBC.OrthoPerspectiveCamera(components);
 
-    components.init();
+      components.init();
 
-    if (cameraPreset) {
-      const [px, py, pz] = cameraPreset.position;
-      const [tx, ty, tz] = cameraPreset.target;
-      world.camera.controls.setLookAt(px, py, pz, tx, ty, tz);
+      if (cameraPreset) {
+        const [px, py, pz] = cameraPreset.position;
+        const [tx, ty, tz] = cameraPreset.target;
+        world.camera.controls.setLookAt(px, py, pz, tx, ty, tz);
 
-      // Switch to orthographic projection & Plan navigation for 2D views
-      if (cameraPreset.orthographic) {
-        world.camera.projection.set("Orthographic");
-        world.camera.set("Plan");
+        // Switch to orthographic projection & Plan navigation for 2D views
+        if (cameraPreset.orthographic) {
+          world.camera.projection.set("Orthographic");
+          world.camera.set("Plan");
+        }
+      } else {
+        world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
       }
-    } else {
-      world.camera.controls.setLookAt(12, 6, 8, 0, 0, -10);
-    }
-    world.scene.setup();
+      world.scene.setup();
 
-    const grids = components.get(OBC.Grids);
-    const grid = grids.create(world);
+      const grids = components.get(OBC.Grids);
+      const grid = grids.create(world);
 
-    // Disable grid fade for orthographic cameras (looks better)
-    if (cameraPreset?.orthographic) {
-      grid.fade = false;
-    }
+      // Disable grid fade for orthographic cameras (looks better)
+      if (cameraPreset?.orthographic) {
+        grid.fade = false;
+      }
 
-    // Set up section clipping plane if preset defines one
-    if (cameraPreset?.sectionPlane) {
-      const clipper = components.get(OBC.Clipper);
-      clipper.enabled = true;
-      const { normal, point } = cameraPreset.sectionPlane;
-      clipper.createFromNormalAndCoplanarPoint(
-        world,
-        new THREE.Vector3(normal[0], normal[1], normal[2]),
-        new THREE.Vector3(point[0], point[1], point[2]),
+      // Set up section clipping plane if preset defines one
+      if (cameraPreset?.sectionPlane) {
+        const clipper = components.get(OBC.Clipper);
+        clipper.enabled = true;
+        const { normal, point } = cameraPreset.sectionPlane;
+        clipper.createFromNormalAndCoplanarPoint(
+          world,
+          new THREE.Vector3(normal[0], normal[1], normal[2]),
+          new THREE.Vector3(point[0], point[1], point[2]),
+        );
+        clipper.visible = false; // hide the plane helper
+      }
+
+      // Dark background for 3D perspective, light for ortho CAD views
+      world.scene.three.background = new THREE.Color(
+        cameraPreset?.orthographic ? 0x1a1f2e : 0x0f172a,
       );
-      clipper.visible = false; // hide the plane helper
+
+      // Add ambient + directional lights for authored geometry
+      const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+      const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+      directional.position.set(10, 20, 10);
+      world.scene.three.add(ambient, directional);
+
+      highlightMatRef.current = new THREE.MeshBasicMaterial({
+        color: 0x3b82f6,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: false,
+      });
+
+      // Snap indicator (small sphere on ground)
+      const snapGeo = new THREE.SphereGeometry(0.08, 12, 12);
+      const snapMesh = new THREE.Mesh(snapGeo, SNAP_INDICATOR_MAT);
+      snapMesh.visible = false;
+      snapMesh.renderOrder = 1000;
+      world.scene.three.add(snapMesh);
+      snapIndicatorRef.current = snapMesh;
+    } catch (err) {
+      console.error("Viewer3D: failed to initialize 3D engine", err);
+      setInitError(true);
+      return;
     }
-
-    world.scene.three.background = new THREE.Color(0x0f172a);
-
-    // Add ambient + directional lights for authored geometry
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-    directional.position.set(10, 20, 10);
-    world.scene.three.add(ambient, directional);
-
-    highlightMatRef.current = new THREE.MeshBasicMaterial({
-      color: 0x3b82f6,
-      transparent: true,
-      opacity: 0.5,
-      depthTest: false,
-    });
-
-    // Snap indicator (small sphere on ground)
-    const snapGeo = new THREE.SphereGeometry(0.08, 12, 12);
-    const snapMesh = new THREE.Mesh(snapGeo, SNAP_INDICATOR_MAT);
-    snapMesh.visible = false;
-    snapMesh.renderOrder = 1000;
-    world.scene.three.add(snapMesh);
-    snapIndicatorRef.current = snapMesh;
 
     return () => {
-      components.dispose();
+      worldRef.current = null;
+      componentsRef.current = null;
+      // Clear all object maps so subsequent effect re-runs don't
+      // try to dispose already-dead Three.js objects
+      authoredMeshesRef.current.clear();
+      gridLineObjectsRef.current.clear();
+      levelObjectsRef.current.clear();
+      edgeObjectsRef.current.clear();
+      originalMaterialsRef.current.clear();
+      highlightedRef.current = [];
+      dimensionLabelsRef.current = [];
+      try {
+        components.dispose();
+      } catch {
+        // OBC may throw during dispose in StrictMode double-mount
+      }
     };
   }, []);
 
@@ -295,7 +332,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   const highlightMeshes = useCallback((meshes: THREE.Mesh[]) => {
     const world = worldRef.current;
-    if (!world) return;
+    if (!world?.scene?.three) return;
     const scene = world.scene.three;
     for (const h of highlightedRef.current) {
       scene.remove(h);
@@ -1262,7 +1299,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   useEffect(() => {
     const world = worldRef.current;
-    if (!world) return;
+    if (!world?.scene?.three) return;
     const scene = world.scene.three;
 
     // Remove stale meshes
@@ -1299,11 +1336,117 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [bimElements]);
 
+  // ── 2D CAD rendering for orthographic views ────────────────
+  // In ortho views (plan, elevation, section), render elements as clean
+  // line drawings with faint fills instead of solid 3D materials.
+
+  const isOrthoView = cameraPreset?.orthographic ?? false;
+  const edgeObjectsRef = useRef<Map<string, THREE.LineSegments>>(new Map());
+  const originalMaterialsRef = useRef<
+    Map<string, THREE.Material | THREE.Material[]>
+  >(new Map());
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three) return;
+    const scene = world.scene.three;
+
+    // Clean up old edge objects
+    for (const [id, edges] of Array.from(edgeObjectsRef.current.entries())) {
+      const parentMesh = authoredMeshesRef.current.get(id);
+      if (parentMesh) parentMesh.remove(edges);
+      edges.geometry?.dispose();
+      (edges.material as THREE.Material)?.dispose();
+    }
+    edgeObjectsRef.current.clear();
+
+    if (isOrthoView) {
+      // Switch to CAD line-drawing style
+      for (const [id, mesh] of Array.from(
+        authoredMeshesRef.current.entries(),
+      )) {
+        // Store original material if not already stored
+        if (!originalMaterialsRef.current.has(id)) {
+          originalMaterialsRef.current.set(id, mesh.material);
+        }
+
+        // Apply a very faint fill so the shape is subtly visible
+        mesh.material = new THREE.MeshBasicMaterial({
+          color: 0x94a3b8,
+          transparent: true,
+          opacity: 0.08,
+          depthWrite: false,
+        });
+
+        // Add crisp edge outlines
+        const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, 15);
+        const edgesMat = new THREE.LineBasicMaterial({
+          color: 0xcbd5e1,
+          linewidth: 1,
+        });
+        const edgeLines = new THREE.LineSegments(edgesGeo, edgesMat);
+        edgeLines.renderOrder = 100;
+        mesh.add(edgeLines);
+        edgeObjectsRef.current.set(id, edgeLines);
+      }
+
+      // Also apply to IFC model meshes
+      scene.traverse((obj) => {
+        if (
+          obj instanceof THREE.Mesh &&
+          !obj.userData.bimElementId &&
+          !obj.userData._gridGeo &&
+          !obj.userData._levelGeo &&
+          obj.geometry
+        ) {
+          const meshId = `_ifc_${obj.id}`;
+          if (!originalMaterialsRef.current.has(meshId)) {
+            originalMaterialsRef.current.set(meshId, obj.material);
+          }
+          obj.material = new THREE.MeshBasicMaterial({
+            color: 0x94a3b8,
+            transparent: true,
+            opacity: 0.08,
+            depthWrite: false,
+          });
+
+          const edgesGeo = new THREE.EdgesGeometry(obj.geometry, 15);
+          const edgesMat = new THREE.LineBasicMaterial({
+            color: 0xcbd5e1,
+            linewidth: 1,
+          });
+          const edgeLines = new THREE.LineSegments(edgesGeo, edgesMat);
+          edgeLines.renderOrder = 100;
+          obj.add(edgeLines);
+          edgeObjectsRef.current.set(meshId, edgeLines);
+        }
+      });
+    } else {
+      // Restore original materials for 3D perspective view
+      for (const [id, origMat] of Array.from(
+        originalMaterialsRef.current.entries(),
+      )) {
+        if (id.startsWith("_ifc_")) {
+          const numId = Number(id.slice(5));
+          scene.traverse((obj) => {
+            if (obj instanceof THREE.Mesh && obj.id === numId) {
+              obj.material = origMat;
+            }
+          });
+        } else {
+          const mesh = authoredMeshesRef.current.get(id);
+          if (mesh) mesh.material = origMat;
+        }
+      }
+      originalMaterialsRef.current.clear();
+    }
+  }, [isOrthoView, bimElements]);
+
   // ── Sync gridlines → scene ─────────────────────────────────
 
   useEffect(() => {
     const world = worldRef.current;
-    if (!world) return;
+    if (!world?.scene?.three) return;
     const scene = world.scene.three;
 
     // Remove stale gridline objects
@@ -1327,6 +1470,8 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     // Add or update gridlines
     const GRIDLINE_COLOR = 0x06b6d4; // cyan
     const EXTEND = 50; // extend line 50m beyond each end
+    const VERT_BOTTOM = -1; // vertical extent bottom
+    const VERT_TOP = 50; // vertical extent top
 
     for (const gl of gridLines) {
       // Remove existing to rebuild
@@ -1335,6 +1480,10 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         scene.remove(existing);
         existing.traverse((obj) => {
           if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Mesh && obj.userData._gridGeo) {
+            obj.geometry.dispose();
+            (obj.material as THREE.Material).dispose();
+          }
           if (obj instanceof THREE.Sprite) {
             (obj.material as THREE.SpriteMaterial).map?.dispose();
             (obj.material as THREE.SpriteMaterial).dispose();
@@ -1353,18 +1502,12 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       const dirX = dx / len;
       const dirZ = dz / len;
 
-      const extStart = new THREE.Vector3(
-        gl.start.x - dirX * EXTEND,
-        0.02,
-        gl.start.z - dirZ * EXTEND,
-      );
-      const extEnd = new THREE.Vector3(
-        gl.end.x + dirX * EXTEND,
-        0.02,
-        gl.end.z + dirZ * EXTEND,
-      );
+      const extStartX = gl.start.x - dirX * EXTEND;
+      const extStartZ = gl.start.z - dirZ * EXTEND;
+      const extEndX = gl.end.x + dirX * EXTEND;
+      const extEndZ = gl.end.z + dirZ * EXTEND;
 
-      // Dashed line
+      // Ground-level dashed line (visible in plan view)
       const lineMat = new THREE.LineDashedMaterial({
         color: GRIDLINE_COLOR,
         dashSize: 0.5,
@@ -1372,14 +1515,75 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         linewidth: 1,
       });
       const lineGeo = new THREE.BufferGeometry().setFromPoints([
-        extStart,
-        extEnd,
+        new THREE.Vector3(extStartX, 0.02, extStartZ),
+        new THREE.Vector3(extEndX, 0.02, extEndZ),
       ]);
       const line = new THREE.Line(lineGeo, lineMat);
       line.computeLineDistances();
       group.add(line);
 
-      // Bubble at start end
+      // Vertical plane (visible in elevation/section views)
+      // Build a quad from 4 corners: extStart bottom→top, extEnd top→bottom
+      const vertGeo = new THREE.BufferGeometry();
+      const vertices = new Float32Array([
+        extStartX,
+        VERT_BOTTOM,
+        extStartZ,
+        extEndX,
+        VERT_BOTTOM,
+        extEndZ,
+        extEndX,
+        VERT_TOP,
+        extEndZ,
+        extStartX,
+        VERT_BOTTOM,
+        extStartZ,
+        extEndX,
+        VERT_TOP,
+        extEndZ,
+        extStartX,
+        VERT_TOP,
+        extStartZ,
+      ]);
+      vertGeo.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+      vertGeo.computeVertexNormals();
+      const vertMat = new THREE.MeshBasicMaterial({
+        color: GRIDLINE_COLOR,
+        transparent: true,
+        opacity: 0.06,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const vertPlane = new THREE.Mesh(vertGeo, vertMat);
+      vertPlane.userData._gridGeo = true;
+      vertPlane.renderOrder = 1;
+      group.add(vertPlane);
+
+      // Vertical dashed line at the gridline's start position (visible in elevation)
+      const vertLineMat = new THREE.LineDashedMaterial({
+        color: GRIDLINE_COLOR,
+        dashSize: 0.5,
+        gapSize: 0.2,
+        linewidth: 1,
+      });
+      const vertLineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(gl.start.x, VERT_BOTTOM, gl.start.z),
+        new THREE.Vector3(gl.start.x, VERT_TOP, gl.start.z),
+      ]);
+      const vertLine = new THREE.Line(vertLineGeo, vertLineMat);
+      vertLine.computeLineDistances();
+      group.add(vertLine);
+
+      // Also a vertical line at the end position
+      const vertLineGeo2 = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(gl.end.x, VERT_BOTTOM, gl.end.z),
+        new THREE.Vector3(gl.end.x, VERT_TOP, gl.end.z),
+      ]);
+      const vertLine2 = new THREE.Line(vertLineGeo2, vertLineMat);
+      vertLine2.computeLineDistances();
+      group.add(vertLine2);
+
+      // Bubble at start (on ground, for plan view)
       const bubbleGeo = new THREE.CircleGeometry(0.4, 24);
       const bubbleMat = new THREE.MeshBasicMaterial({
         color: GRIDLINE_COLOR,
@@ -1390,6 +1594,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       bubble.position.set(gl.start.x, 0.03, gl.start.z);
       bubble.rotation.x = -Math.PI / 2;
       bubble.renderOrder = 1002;
+      bubble.userData._gridGeo = true;
       group.add(bubble);
 
       // Label sprite at start
@@ -1430,13 +1635,183 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [gridLines]);
 
+  // ── Sync levels → scene (Revit-style level indicators) ─────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three) return;
+    const scene = world.scene.three;
+
+    const LEVEL_COLOR = 0x22c55e; // green
+    const LEVEL_EXTEND = 80; // how far the line extends
+    const currentIds = new Set(levels.map((l) => l.id));
+
+    // Remove stale level objects
+    for (const [id, group] of Array.from(levelObjectsRef.current.entries())) {
+      if (!currentIds.has(id)) {
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Mesh && obj.userData._levelGeo) {
+            obj.geometry.dispose();
+            (obj.material as THREE.Material).dispose();
+          }
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+        levelObjectsRef.current.delete(id);
+      }
+    }
+
+    for (const lv of levels) {
+      if (!lv.visible) {
+        // Remove if hidden
+        const existing = levelObjectsRef.current.get(lv.id);
+        if (existing) {
+          scene.remove(existing);
+          existing.traverse((obj) => {
+            if (obj instanceof THREE.Line) obj.geometry.dispose();
+            if (obj instanceof THREE.Mesh && obj.userData._levelGeo) {
+              obj.geometry.dispose();
+              (obj.material as THREE.Material).dispose();
+            }
+            if (obj instanceof THREE.Sprite) {
+              (obj.material as THREE.SpriteMaterial).map?.dispose();
+              (obj.material as THREE.SpriteMaterial).dispose();
+            }
+          });
+          levelObjectsRef.current.delete(lv.id);
+        }
+        continue;
+      }
+
+      // Remove existing to rebuild
+      const existing = levelObjectsRef.current.get(lv.id);
+      if (existing) {
+        scene.remove(existing);
+        existing.traverse((obj) => {
+          if (obj instanceof THREE.Line) obj.geometry.dispose();
+          if (obj instanceof THREE.Mesh && obj.userData._levelGeo) {
+            obj.geometry.dispose();
+            (obj.material as THREE.Material).dispose();
+          }
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+      }
+
+      const group = new THREE.Group();
+      group.userData = { levelId: lv.id };
+      const y = lv.height;
+
+      // Horizontal dashed lines along X and Z axes
+      const lineMat = new THREE.LineDashedMaterial({
+        color: LEVEL_COLOR,
+        dashSize: 0.8,
+        gapSize: 0.3,
+        linewidth: 1,
+      });
+
+      // Line along X axis (visible in front/back elevation)
+      const lineGeoX = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-LEVEL_EXTEND, y, 0),
+        new THREE.Vector3(LEVEL_EXTEND, y, 0),
+      ]);
+      const lineX = new THREE.Line(lineGeoX, lineMat);
+      lineX.computeLineDistances();
+      group.add(lineX);
+
+      // Line along Z axis (visible in left/right elevation)
+      const lineGeoZ = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, y, -LEVEL_EXTEND),
+        new THREE.Vector3(0, y, LEVEL_EXTEND),
+      ]);
+      const lineZ = new THREE.Line(lineGeoZ, lineMat);
+      lineZ.computeLineDistances();
+      group.add(lineZ);
+
+      // Triangle marker at the origin end (Revit-style)
+      const triShape = new THREE.Shape();
+      triShape.moveTo(0, 0);
+      triShape.lineTo(-0.3, 0.4);
+      triShape.lineTo(0.3, 0.4);
+      triShape.closePath();
+      const triGeo = new THREE.ShapeGeometry(triShape);
+      const triMat = new THREE.MeshBasicMaterial({
+        color: LEVEL_COLOR,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      });
+
+      // Triangle facing front (visible in front elevation)
+      const triFront = new THREE.Mesh(triGeo, triMat);
+      triFront.position.set(-LEVEL_EXTEND, y, 0);
+      triFront.userData._levelGeo = true;
+      triFront.renderOrder = 1002;
+      group.add(triFront);
+
+      // Triangle facing right (visible in right elevation)
+      const triRight = new THREE.Mesh(triGeo.clone(), triMat);
+      triRight.position.set(0, y, -LEVEL_EXTEND);
+      triRight.rotation.y = Math.PI / 2;
+      triRight.userData._levelGeo = true;
+      triRight.renderOrder = 1002;
+      group.add(triRight);
+
+      // Label sprite
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const fontSize = 28;
+      const text = `${lv.name}  (${formatUnit(lv.height, unitSystem)})`;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      const tw = ctx.measureText(text).width;
+      canvas.width = Math.max(tw + 20, 64);
+      canvas.height = fontSize + 14;
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = "#22c55e";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.fillText(text, 6, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+
+      // Sprite near the front-elevation triangle
+      const sprite = new THREE.Sprite(spriteMat);
+      const aspect = canvas.width / canvas.height;
+      sprite.scale.set(aspect * 0.6, 0.6, 1);
+      sprite.position.set(-LEVEL_EXTEND + aspect * 0.35, y + 0.5, 0);
+      sprite.renderOrder = 1003;
+      group.add(sprite);
+
+      // Duplicate label for right elevation
+      const sprite2 = new THREE.Sprite(spriteMat.clone());
+      sprite2.scale.set(aspect * 0.6, 0.6, 1);
+      sprite2.position.set(0, y + 0.5, -LEVEL_EXTEND + aspect * 0.35);
+      sprite2.renderOrder = 1003;
+      group.add(sprite2);
+
+      scene.add(group);
+      levelObjectsRef.current.set(lv.id, group);
+    }
+  }, [levels, unitSystem]);
+
   // ── Sync 3D dimension lines → scene ────────────────────────
 
   const dimension3DObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
 
   useEffect(() => {
     const world = worldRef.current;
-    if (!world) return;
+    if (!world?.scene?.three) return;
     const scene = world.scene.three;
 
     // Remove stale
@@ -1834,6 +2209,19 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   // ── Cursor style ───────────────────────────────────────────
 
   const cursorStyle = creationTool !== "none" ? "crosshair" : "default";
+
+  if (initError) {
+    return (
+      <div className="relative flex-1 h-full flex items-center justify-center bg-slate-900 text-slate-400">
+        <div className="text-center">
+          <p className="text-sm">Failed to initialize 3D viewport</p>
+          <p className="text-xs mt-1 text-slate-500">
+            Try reducing the number of open viewports
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
