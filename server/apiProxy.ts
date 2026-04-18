@@ -13,6 +13,7 @@ interface GenerateRequest {
   apiKey?: string;
   images: ImageEntry[];
   scaleHint?: string;
+  model?: string;
 }
 
 function readBody(req: import("http").IncomingMessage): Promise<string> {
@@ -76,12 +77,21 @@ export function apiProxyPlugin(): Plugin {
           }
           content.push({ type: "text", text: userText });
 
+          const ALLOWED_MODELS = [
+            "claude-opus-4-20250514",
+            "claude-sonnet-4-20250514",
+          ];
+          const selectedModel = ALLOWED_MODELS.includes(body.model ?? "")
+            ? body.model!
+            : "claude-opus-4-20250514";
+          const isOpus = selectedModel.includes("opus");
+
           const response = await client.messages.create({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 16000,
+            model: selectedModel,
+            max_tokens: isOpus ? 64000 : 16000,
             thinking: {
               type: "enabled",
-              budget_tokens: 10000,
+              budget_tokens: isOpus ? 40000 : 10000,
             },
             system: SYSTEM_PROMPT,
             messages: [{ role: "user", content }],
