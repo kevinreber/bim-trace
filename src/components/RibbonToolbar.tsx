@@ -5,18 +5,23 @@ import type {
   BimElementType,
   CategoryVisibility,
   CreationTool,
+  DetailLevel,
   ElementGroup,
   GridSize,
   Level,
   SavedView,
   ScheduleType,
+  SectionBox,
   SelectedElement,
   UnitSystem,
+  ViewFilterColorBy,
   ViewLayout,
   ViewPane,
   ViewPaneType,
+  ViewTemplate,
 } from "@/types";
 import { formatUnit } from "@/types";
+import { detectClashes } from "./geometryBuilders";
 
 /* ------------------------------------------------------------------ */
 /*  Revit-style Ribbon Toolbar                                         */
@@ -80,6 +85,22 @@ interface RibbonToolbarProps {
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   onZoomToFit?: () => void;
+  // Section box
+  sectionBox?: SectionBox;
+  onSectionBoxChange?: (box: SectionBox) => void;
+  // View filter
+  viewFilterColorBy?: ViewFilterColorBy;
+  onViewFilterChange?: (filter: ViewFilterColorBy) => void;
+  // Detail level & templates
+  detailLevel?: DetailLevel;
+  onDetailLevelChange?: (level: DetailLevel) => void;
+  // Sun study
+  sunHour?: number | null;
+  onSunHourChange?: (hour: number | null) => void;
+  viewTemplates?: ViewTemplate[];
+  onSaveViewTemplate?: () => void;
+  onLoadViewTemplate?: (template: ViewTemplate) => void;
+  onDeleteViewTemplate?: (id: string) => void;
   unitSystem: UnitSystem;
 }
 
@@ -183,7 +204,10 @@ const ANNOTATE_GROUPS: ToolGroupDef[] = [
   },
   {
     label: "3D Measure",
-    tools: [{ id: "dimension3d", label: "3D Dim" }],
+    tools: [
+      { id: "dimension3d", label: "3D Dim" },
+      { id: "spotElevation", label: "Spot EL" },
+    ],
   },
 ];
 
@@ -535,6 +559,29 @@ function ToolIcon({ id }: { id: string }) {
         </text>
       </svg>
     ),
+    spotElevation: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <line x1="12" y1="4" x2="12" y2="16" stroke="#ff6b6b" />
+        <line x1="8" y1="20" x2="16" y2="12" stroke="#ff6b6b" />
+        <line x1="8" y1="12" x2="16" y2="20" stroke="#ff6b6b" />
+        <text
+          x="12"
+          y="8"
+          textAnchor="middle"
+          fontSize="6"
+          fill="#ff6b6b"
+          stroke="none"
+        >
+          EL
+        </text>
+      </svg>
+    ),
     // Annotation icons
     cloud: (
       <svg
@@ -798,9 +845,23 @@ export default function RibbonToolbar({
   onZoomIn,
   onZoomOut,
   onZoomToFit,
+  sectionBox,
+  onSectionBoxChange,
+  viewFilterColorBy = "none",
+  onViewFilterChange,
+  detailLevel = "medium",
+  onDetailLevelChange,
+  sunHour = null,
+  onSunHourChange,
+  viewTemplates = [],
+  onSaveViewTemplate,
+  onLoadViewTemplate,
+  onDeleteViewTemplate,
   unitSystem,
 }: RibbonToolbarProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>("architecture");
+  const [moveDistance, setMoveDistance] = useState("1.0");
+  const [rotateAngle, setRotateAngle] = useState("45");
 
   // ── Manipulation helpers ──────────────────────────────────────
   const selectedBimElement = selectedElement
@@ -808,7 +869,7 @@ export default function RibbonToolbar({
     : null;
 
   const handleMove = (axis: "x" | "z", delta: number) => {
-    if (!selectedBimElement) return;
+    if (!selectedBimElement || selectedBimElement.pinned) return;
     onBimElementUpdate(selectedBimElement.id, {
       start: {
         x: selectedBimElement.start.x + (axis === "x" ? delta : 0),
@@ -822,11 +883,18 @@ export default function RibbonToolbar({
   };
 
   const handleRotate = (angleDeg: number) => {
-    if (!selectedBimElement) return;
+    if (!selectedBimElement || selectedBimElement.pinned) return;
     const angleRad = (angleDeg * Math.PI) / 180;
     const currentRot = selectedBimElement.rotation ?? 0;
     onBimElementUpdate(selectedBimElement.id, {
       rotation: currentRot + angleRad,
+    });
+  };
+
+  const handleTogglePin = () => {
+    if (!selectedBimElement) return;
+    onBimElementUpdate(selectedBimElement.id, {
+      pinned: !selectedBimElement.pinned,
     });
   };
 
@@ -849,6 +917,262 @@ export default function RibbonToolbar({
     };
     // We use onBimElementUpdate with a trick: add via the parent's element creation
     // Instead, we dispatch a custom event that the parent listens for
+    window.dispatchEvent(
+      new CustomEvent("bim-copy-element", { detail: newEl }),
+    );
+  };
+
+  const [arrayCount, setArrayCount] = useState("3");
+  const [arraySpacing, setArraySpacing] = useState("2.0");
+
+  const handleLinearArray = (axis: "x" | "z") => {
+    if (!selectedBimElement) return;
+    const count = Math.max(
+      2,
+      Math.min(50, Math.round(Number.parseFloat(arrayCount) || 3)),
+    );
+    const spacing = Number.parseFloat(arraySpacing) || 2.0;
+    for (let i = 1; i < count; i++) {
+      const dx = axis === "x" ? spacing * i : 0;
+      const dz = axis === "z" ? spacing * i : 0;
+      const newEl: BimElement = {
+        ...selectedBimElement,
+        id: crypto.randomUUID(),
+        name: `${selectedBimElement.name} (${i + 1})`,
+        start: {
+          x: selectedBimElement.start.x + dx,
+          z: selectedBimElement.start.z + dz,
+        },
+        end: {
+          x: selectedBimElement.end.x + dx,
+          z: selectedBimElement.end.z + dz,
+        },
+        params: { ...selectedBimElement.params },
+      };
+      window.dispatchEvent(
+        new CustomEvent("bim-copy-element", { detail: newEl }),
+      );
+    }
+  };
+
+  const handleRadialArray = () => {
+    if (!selectedBimElement) return;
+    const count = Math.max(
+      2,
+      Math.min(50, Math.round(Number.parseFloat(arrayCount) || 3)),
+    );
+    const cx = (selectedBimElement.start.x + selectedBimElement.end.x) / 2;
+    const cz = (selectedBimElement.start.z + selectedBimElement.end.z) / 2;
+    const angleStep = (2 * Math.PI) / count;
+    for (let i = 1; i < count; i++) {
+      const angle = angleStep * i;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const rotatePoint = (px: number, pz: number) => ({
+        x: cx + (px - cx) * cos - (pz - cz) * sin,
+        z: cz + (px - cx) * sin + (pz - cz) * cos,
+      });
+      const newStart = rotatePoint(
+        selectedBimElement.start.x,
+        selectedBimElement.start.z,
+      );
+      const newEnd = rotatePoint(
+        selectedBimElement.end.x,
+        selectedBimElement.end.z,
+      );
+      const newEl: BimElement = {
+        ...selectedBimElement,
+        id: crypto.randomUUID(),
+        name: `${selectedBimElement.name} (${i + 1})`,
+        start: newStart,
+        end: newEnd,
+        rotation: (selectedBimElement.rotation ?? 0) + angle,
+        params: { ...selectedBimElement.params },
+      };
+      window.dispatchEvent(
+        new CustomEvent("bim-copy-element", { detail: newEl }),
+      );
+    }
+  };
+
+  const selectedElements = selectedElementIds
+    .map((id) => bimElements.find((el) => el.id === id))
+    .filter(Boolean) as BimElement[];
+
+  const handleAlignLeft = () => {
+    if (selectedElements.length < 2) return;
+    const minX = Math.min(
+      ...selectedElements.map((el) => Math.min(el.start.x, el.end.x)),
+    );
+    for (const el of selectedElements) {
+      if (el.pinned) continue;
+      const dx = minX - Math.min(el.start.x, el.end.x);
+      onBimElementUpdate(el.id, {
+        start: { x: el.start.x + dx, z: el.start.z },
+        end: { x: el.end.x + dx, z: el.end.z },
+      });
+    }
+  };
+
+  const handleAlignRight = () => {
+    if (selectedElements.length < 2) return;
+    const maxX = Math.max(
+      ...selectedElements.map((el) => Math.max(el.start.x, el.end.x)),
+    );
+    for (const el of selectedElements) {
+      if (el.pinned) continue;
+      const dx = maxX - Math.max(el.start.x, el.end.x);
+      onBimElementUpdate(el.id, {
+        start: { x: el.start.x + dx, z: el.start.z },
+        end: { x: el.end.x + dx, z: el.end.z },
+      });
+    }
+  };
+
+  const handleAlignTop = () => {
+    if (selectedElements.length < 2) return;
+    const minZ = Math.min(
+      ...selectedElements.map((el) => Math.min(el.start.z, el.end.z)),
+    );
+    for (const el of selectedElements) {
+      if (el.pinned) continue;
+      const dz = minZ - Math.min(el.start.z, el.end.z);
+      onBimElementUpdate(el.id, {
+        start: { x: el.start.x, z: el.start.z + dz },
+        end: { x: el.end.x, z: el.end.z + dz },
+      });
+    }
+  };
+
+  const handleDistributeX = () => {
+    if (selectedElements.length < 3) return;
+    const sorted = [...selectedElements].sort(
+      (a, b) => (a.start.x + a.end.x) / 2 - (b.start.x + b.end.x) / 2,
+    );
+    const first = (sorted[0].start.x + sorted[0].end.x) / 2;
+    const last =
+      (sorted[sorted.length - 1].start.x + sorted[sorted.length - 1].end.x) / 2;
+    const step = (last - first) / (sorted.length - 1);
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const el = sorted[i];
+      if (el.pinned) continue;
+      const cx = (el.start.x + el.end.x) / 2;
+      const target = first + step * i;
+      const dx = target - cx;
+      onBimElementUpdate(el.id, {
+        start: { x: el.start.x + dx, z: el.start.z },
+        end: { x: el.end.x + dx, z: el.end.z },
+      });
+    }
+  };
+
+  const handleDistributeZ = () => {
+    if (selectedElements.length < 3) return;
+    const sorted = [...selectedElements].sort(
+      (a, b) => (a.start.z + a.end.z) / 2 - (b.start.z + b.end.z) / 2,
+    );
+    const first = (sorted[0].start.z + sorted[0].end.z) / 2;
+    const last =
+      (sorted[sorted.length - 1].start.z + sorted[sorted.length - 1].end.z) / 2;
+    const step = (last - first) / (sorted.length - 1);
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const el = sorted[i];
+      if (el.pinned) continue;
+      const cz = (el.start.z + el.end.z) / 2;
+      const target = first + step * i;
+      const dz = target - cz;
+      onBimElementUpdate(el.id, {
+        start: { x: el.start.x, z: el.start.z + dz },
+        end: { x: el.end.x, z: el.end.z + dz },
+      });
+    }
+  };
+
+  const handleSplitWall = () => {
+    if (!selectedBimElement || selectedBimElement.type !== "wall") return;
+    if (selectedBimElement.pinned) return;
+    // Split at midpoint
+    const midX = (selectedBimElement.start.x + selectedBimElement.end.x) / 2;
+    const midZ = (selectedBimElement.start.z + selectedBimElement.end.z) / 2;
+    // Update original wall to end at midpoint
+    onBimElementUpdate(selectedBimElement.id, {
+      end: { x: midX, z: midZ },
+    });
+    // Create second wall from midpoint to original end
+    const newWall: BimElement = {
+      ...selectedBimElement,
+      id: crypto.randomUUID(),
+      name: `${selectedBimElement.name} (split)`,
+      start: { x: midX, z: midZ },
+      end: { ...selectedBimElement.end },
+      params: { ...selectedBimElement.params },
+    };
+    window.dispatchEvent(
+      new CustomEvent("bim-copy-element", { detail: newWall }),
+    );
+  };
+
+  const handleExtendWall = () => {
+    if (!selectedBimElement || selectedBimElement.type !== "wall") return;
+    if (selectedBimElement.pinned) return;
+    const extDist = Number.parseFloat(moveDistance) || 1.0;
+    const dx = selectedBimElement.end.x - selectedBimElement.start.x;
+    const dz = selectedBimElement.end.z - selectedBimElement.start.z;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.01) return;
+    const dirX = dx / len;
+    const dirZ = dz / len;
+    onBimElementUpdate(selectedBimElement.id, {
+      end: {
+        x: selectedBimElement.end.x + dirX * extDist,
+        z: selectedBimElement.end.z + dirZ * extDist,
+      },
+    });
+  };
+
+  const handleTrimWall = () => {
+    if (!selectedBimElement || selectedBimElement.type !== "wall") return;
+    if (selectedBimElement.pinned) return;
+    const trimDist = Number.parseFloat(moveDistance) || 1.0;
+    const dx = selectedBimElement.end.x - selectedBimElement.start.x;
+    const dz = selectedBimElement.end.z - selectedBimElement.start.z;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len <= trimDist) return; // Can't trim shorter than trim distance
+    const dirX = dx / len;
+    const dirZ = dz / len;
+    onBimElementUpdate(selectedBimElement.id, {
+      end: {
+        x: selectedBimElement.end.x - dirX * trimDist,
+        z: selectedBimElement.end.z - dirZ * trimDist,
+      },
+    });
+  };
+
+  const handleOffset = () => {
+    if (!selectedBimElement || selectedBimElement.pinned) return;
+    const dist = Number.parseFloat(moveDistance) || 1.0;
+    // Compute perpendicular offset direction
+    const dx = selectedBimElement.end.x - selectedBimElement.start.x;
+    const dz = selectedBimElement.end.z - selectedBimElement.start.z;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.01) return;
+    // Normal direction (perpendicular)
+    const nx = -dz / len;
+    const nz = dx / len;
+    const newEl: BimElement = {
+      ...selectedBimElement,
+      id: crypto.randomUUID(),
+      name: `${selectedBimElement.name} (offset)`,
+      start: {
+        x: selectedBimElement.start.x + nx * dist,
+        z: selectedBimElement.start.z + nz * dist,
+      },
+      end: {
+        x: selectedBimElement.end.x + nx * dist,
+        z: selectedBimElement.end.z + nz * dist,
+      },
+      params: { ...selectedBimElement.params },
+    };
     window.dispatchEvent(
       new CustomEvent("bim-copy-element", { detail: newEl }),
     );
@@ -878,9 +1202,9 @@ export default function RibbonToolbar({
   };
 
   const handleAnnotationTool = (id: string) => {
-    // dimension3d uses the creation tool system, not annotation
-    if (id === "dimension3d") {
-      onCreationToolChange("dimension3d");
+    // dimension3d and spotElevation use the creation tool system, not annotation
+    if (id === "dimension3d" || id === "spotElevation") {
+      onCreationToolChange(id as "dimension3d" | "spotElevation");
       onAnnotationToolChange("select");
       return;
     }
@@ -1045,7 +1369,9 @@ export default function RibbonToolbar({
               <div className="ribbon-group-tools">
                 <button
                   type="button"
-                  onClick={() => handleMove("x", -0.5)}
+                  onClick={() =>
+                    handleMove("x", -(Number.parseFloat(moveDistance) || 0.5))
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
                   title="Move Left (-X)"
@@ -1064,7 +1390,9 @@ export default function RibbonToolbar({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleMove("x", 0.5)}
+                  onClick={() =>
+                    handleMove("x", Number.parseFloat(moveDistance) || 0.5)
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
                   title="Move Right (+X)"
@@ -1083,7 +1411,9 @@ export default function RibbonToolbar({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleMove("z", -0.5)}
+                  onClick={() =>
+                    handleMove("z", -(Number.parseFloat(moveDistance) || 0.5))
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
                   title="Move Forward (-Z)"
@@ -1102,7 +1432,9 @@ export default function RibbonToolbar({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleMove("z", 0.5)}
+                  onClick={() =>
+                    handleMove("z", Number.parseFloat(moveDistance) || 0.5)
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
                   title="Move Back (+Z)"
@@ -1119,6 +1451,26 @@ export default function RibbonToolbar({
                   </svg>
                   <span className="ribbon-tool-label">+Z</span>
                 </button>
+                <input
+                  type="number"
+                  value={moveDistance}
+                  onChange={(e) => setMoveDistance(e.target.value)}
+                  className="ribbon-numeric-input"
+                  title="Move distance (meters)"
+                  step="0.1"
+                  min="0.01"
+                  style={{
+                    width: "48px",
+                    height: "24px",
+                    fontSize: "10px",
+                    textAlign: "center",
+                    border: "1px solid var(--revit-border)",
+                    borderRadius: "2px",
+                    background: "var(--revit-input-bg, #2a2a2a)",
+                    color: "var(--revit-text)",
+                    padding: "0 2px",
+                  }}
+                />
               </div>
               <div className="ribbon-group-label">Move</div>
             </div>
@@ -1128,10 +1480,12 @@ export default function RibbonToolbar({
               <div className="ribbon-group-tools">
                 <button
                   type="button"
-                  onClick={() => handleRotate(-45)}
+                  onClick={() =>
+                    handleRotate(-(Number.parseFloat(rotateAngle) || 45))
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
-                  title="Rotate -45°"
+                  title={`Rotate -${rotateAngle}°`}
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -1143,14 +1497,16 @@ export default function RibbonToolbar({
                     <path d="M4 12 A8 8 0 0 1 20 12" />
                     <polyline points="4,8 4,12 8,12" />
                   </svg>
-                  <span className="ribbon-tool-label">-45°</span>
+                  <span className="ribbon-tool-label">CCW</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleRotate(45)}
+                  onClick={() =>
+                    handleRotate(Number.parseFloat(rotateAngle) || 45)
+                  }
                   className="ribbon-tool-btn"
                   disabled={!selectedBimElement}
-                  title="Rotate +45°"
+                  title={`Rotate +${rotateAngle}°`}
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -1162,8 +1518,29 @@ export default function RibbonToolbar({
                     <path d="M20 12 A8 8 0 0 0 4 12" />
                     <polyline points="20,8 20,12 16,12" />
                   </svg>
-                  <span className="ribbon-tool-label">+45°</span>
+                  <span className="ribbon-tool-label">CW</span>
                 </button>
+                <input
+                  type="number"
+                  value={rotateAngle}
+                  onChange={(e) => setRotateAngle(e.target.value)}
+                  className="ribbon-numeric-input"
+                  title="Rotation angle (degrees)"
+                  step="15"
+                  min="1"
+                  max="360"
+                  style={{
+                    width: "40px",
+                    height: "24px",
+                    fontSize: "10px",
+                    textAlign: "center",
+                    border: "1px solid var(--revit-border)",
+                    borderRadius: "2px",
+                    background: "var(--revit-input-bg, #2a2a2a)",
+                    color: "var(--revit-text)",
+                    padding: "0 2px",
+                  }}
+                />
                 <button
                   type="button"
                   onClick={handleCopy}
@@ -1209,8 +1586,376 @@ export default function RibbonToolbar({
                   </svg>
                   <span className="ribbon-tool-label">Mirror</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleOffset}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title={`Offset: parallel copy at ${moveDistance}m distance`}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="4" x2="4" y2="20" />
+                    <line
+                      x1="14"
+                      y1="4"
+                      x2="14"
+                      y2="20"
+                      strokeDasharray="3 2"
+                    />
+                    <path d="M7 12 L11 12" />
+                    <polyline points="10,10 12,12 10,14" />
+                  </svg>
+                  <span className="ribbon-tool-label">Offset</span>
+                </button>
               </div>
               <div className="ribbon-group-label">Transform</div>
+            </div>
+
+            {/* Array tools */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={() => handleLinearArray("x")}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Linear Array along X"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="2" y="8" width="5" height="8" rx="0.5" />
+                    <rect x="9.5" y="8" width="5" height="8" rx="0.5" />
+                    <rect x="17" y="8" width="5" height="8" rx="0.5" />
+                  </svg>
+                  <span className="ribbon-tool-label">X Arr</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLinearArray("z")}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Linear Array along Z"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="8" y="2" width="8" height="5" rx="0.5" />
+                    <rect x="8" y="9.5" width="8" height="5" rx="0.5" />
+                    <rect x="8" y="17" width="8" height="5" rx="0.5" />
+                  </svg>
+                  <span className="ribbon-tool-label">Z Arr</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRadialArray}
+                  className="ribbon-tool-btn"
+                  disabled={!selectedBimElement}
+                  title="Radial Array"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <circle cx="12" cy="12" r="8" strokeDasharray="3 2" />
+                    <rect x="10" y="2" width="4" height="4" rx="0.5" />
+                    <rect x="18" y="10" width="4" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="4" height="4" rx="0.5" />
+                  </svg>
+                  <span className="ribbon-tool-label">Radial</span>
+                </button>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                    fontSize: "9px",
+                    color: "var(--revit-text-dim, #999)",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    N
+                    <input
+                      type="number"
+                      value={arrayCount}
+                      onChange={(e) => setArrayCount(e.target.value)}
+                      title="Number of copies"
+                      step="1"
+                      min="2"
+                      max="50"
+                      style={{
+                        width: "32px",
+                        height: "18px",
+                        fontSize: "9px",
+                        textAlign: "center",
+                        border: "1px solid var(--revit-border)",
+                        borderRadius: "2px",
+                        background: "var(--revit-input-bg, #2a2a2a)",
+                        color: "var(--revit-text)",
+                        padding: "0 1px",
+                      }}
+                    />
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    D
+                    <input
+                      type="number"
+                      value={arraySpacing}
+                      onChange={(e) => setArraySpacing(e.target.value)}
+                      title="Spacing (meters)"
+                      step="0.5"
+                      min="0.1"
+                      style={{
+                        width: "32px",
+                        height: "18px",
+                        fontSize: "9px",
+                        textAlign: "center",
+                        border: "1px solid var(--revit-border)",
+                        borderRadius: "2px",
+                        background: "var(--revit-input-bg, #2a2a2a)",
+                        color: "var(--revit-text)",
+                        padding: "0 1px",
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="ribbon-group-label">Array</div>
+            </div>
+
+            {/* Wall editing: Split/Extend/Trim */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={handleSplitWall}
+                  className="ribbon-tool-btn"
+                  disabled={
+                    !selectedBimElement || selectedBimElement.type !== "wall"
+                  }
+                  title="Split Wall at midpoint"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="12" x2="10" y2="12" />
+                    <line x1="14" y1="12" x2="20" y2="12" />
+                    <line
+                      x1="12"
+                      y1="6"
+                      x2="12"
+                      y2="18"
+                      strokeDasharray="2 2"
+                    />
+                  </svg>
+                  <span className="ribbon-tool-label">Split</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExtendWall}
+                  className="ribbon-tool-btn"
+                  disabled={
+                    !selectedBimElement || selectedBimElement.type !== "wall"
+                  }
+                  title={`Extend Wall by ${moveDistance}m`}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="12" x2="16" y2="12" />
+                    <line
+                      x1="16"
+                      y1="12"
+                      x2="20"
+                      y2="12"
+                      strokeDasharray="2 2"
+                    />
+                    <polyline points="18,9 21,12 18,15" />
+                  </svg>
+                  <span className="ribbon-tool-label">Extend</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTrimWall}
+                  className="ribbon-tool-btn"
+                  disabled={
+                    !selectedBimElement || selectedBimElement.type !== "wall"
+                  }
+                  title={`Trim Wall by ${moveDistance}m`}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="12" x2="16" y2="12" />
+                    <line x1="16" y1="8" x2="20" y2="16" />
+                    <line x1="16" y1="16" x2="20" y2="8" />
+                  </svg>
+                  <span className="ribbon-tool-label">Trim</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Wall Edit</div>
+            </div>
+
+            {/* Align & Distribute */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={handleAlignLeft}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElements.length < 2}
+                  title="Align Left (min X)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="4" x2="4" y2="20" />
+                    <rect x="4" y="6" width="12" height="4" />
+                    <rect x="4" y="14" width="8" height="4" />
+                  </svg>
+                  <span className="ribbon-tool-label">Left</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAlignRight}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElements.length < 2}
+                  title="Align Right (max X)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="20" y1="4" x2="20" y2="20" />
+                    <rect x="8" y="6" width="12" height="4" />
+                    <rect x="12" y="14" width="8" height="4" />
+                  </svg>
+                  <span className="ribbon-tool-label">Right</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAlignTop}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElements.length < 2}
+                  title="Align Top (min Z)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <line x1="4" y1="4" x2="20" y2="4" />
+                    <rect x="6" y="4" width="4" height="12" />
+                    <rect x="14" y="4" width="4" height="8" />
+                  </svg>
+                  <span className="ribbon-tool-label">Top</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDistributeX}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElements.length < 3}
+                  title="Distribute evenly along X"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="2" y="8" width="4" height="8" />
+                    <rect x="10" y="8" width="4" height="8" />
+                    <rect x="18" y="8" width="4" height="8" />
+                    <line
+                      x1="4"
+                      y1="20"
+                      x2="20"
+                      y2="20"
+                      strokeDasharray="2 2"
+                    />
+                  </svg>
+                  <span className="ribbon-tool-label">Dist X</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDistributeZ}
+                  className="ribbon-tool-btn"
+                  disabled={selectedElements.length < 3}
+                  title="Distribute evenly along Z"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <rect x="8" y="2" width="8" height="4" />
+                    <rect x="8" y="10" width="8" height="4" />
+                    <rect x="8" y="18" width="8" height="4" />
+                    <line
+                      x1="20"
+                      y1="4"
+                      x2="20"
+                      y2="20"
+                      strokeDasharray="2 2"
+                    />
+                  </svg>
+                  <span className="ribbon-tool-label">Dist Z</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Align</div>
             </div>
 
             {/* Group/Ungroup */}
@@ -1266,6 +2011,37 @@ export default function RibbonToolbar({
                 </button>
               </div>
               <div className="ribbon-group-label">Group</div>
+            </div>
+
+            {/* Pin/Unpin */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={handleTogglePin}
+                  className={`ribbon-tool-btn ${selectedBimElement?.pinned ? "ribbon-tool-active" : ""}`}
+                  disabled={!selectedBimElement}
+                  title={
+                    selectedBimElement?.pinned
+                      ? "Unpin Element (allow editing)"
+                      : "Pin Element (lock position)"
+                  }
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill={selectedBimElement?.pinned ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path d="M12 2 L14 8 L20 10 L16 14 L17 22 L12 18 L7 22 L8 14 L4 10 L10 8 Z" />
+                  </svg>
+                  <span className="ribbon-tool-label">
+                    {selectedBimElement?.pinned ? "Unpin" : "Pin"}
+                  </span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Lock</div>
             </div>
 
             <div className="ribbon-group">
@@ -1742,6 +2518,265 @@ export default function RibbonToolbar({
               </div>
               <div className="ribbon-group-label">Navigation</div>
             </div>
+
+            {/* Section Box */}
+            {onSectionBoxChange && sectionBox && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSectionBoxChange({
+                        ...sectionBox,
+                        enabled: !sectionBox.enabled,
+                      })
+                    }
+                    className={`ribbon-tool-btn ${sectionBox.enabled ? "ribbon-tool-active" : ""}`}
+                    title="Toggle Section Box"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M3 8 L12 3 L21 8 L21 16 L12 21 L3 16 Z" />
+                      <path d="M3 8 L12 13 L21 8" />
+                      <line x1="12" y1="13" x2="12" y2="21" />
+                    </svg>
+                    <span className="ribbon-tool-label">
+                      {sectionBox.enabled ? "Hide" : "Box"}
+                    </span>
+                  </button>
+                  {sectionBox.enabled && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSectionBoxChange({
+                          enabled: true,
+                          min: { x: -10, y: -1, z: -10 },
+                          max: { x: 10, y: 10, z: 10 },
+                        })
+                      }
+                      className="ribbon-tool-btn"
+                      title="Reset Section Box to default size"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                      >
+                        <path d="M4 12 A8 8 0 1 1 12 20" />
+                        <polyline points="4,8 4,12 8,12" />
+                      </svg>
+                      <span className="ribbon-tool-label">Reset</span>
+                    </button>
+                  )}
+                </div>
+                <div className="ribbon-group-label">Section Box</div>
+              </div>
+            )}
+
+            {/* View Filters - Color By */}
+            {onViewFilterChange && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        color: "var(--revit-text-dim, #999)",
+                      }}
+                    >
+                      Color By
+                    </span>
+                    <select
+                      value={viewFilterColorBy}
+                      onChange={(e) =>
+                        onViewFilterChange(e.target.value as ViewFilterColorBy)
+                      }
+                      style={{
+                        width: "80px",
+                        height: "22px",
+                        fontSize: "10px",
+                        border: "1px solid var(--revit-border)",
+                        borderRadius: "2px",
+                        background: "var(--revit-input-bg, #2a2a2a)",
+                        color: "var(--revit-text)",
+                        padding: "0 4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="none">None</option>
+                      <option value="type">Type</option>
+                      <option value="level">Level</option>
+                      <option value="phase">Phase</option>
+                      <option value="material">Material</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="ribbon-group-label">View Filter</div>
+              </div>
+            )}
+
+            {/* Detail Level */}
+            {onDetailLevelChange && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        color: "var(--revit-text-dim, #999)",
+                      }}
+                    >
+                      Detail
+                    </span>
+                    <select
+                      value={detailLevel}
+                      onChange={(e) =>
+                        onDetailLevelChange(e.target.value as DetailLevel)
+                      }
+                      style={{
+                        width: "72px",
+                        height: "22px",
+                        fontSize: "10px",
+                        border: "1px solid var(--revit-border)",
+                        borderRadius: "2px",
+                        background: "var(--revit-input-bg, #2a2a2a)",
+                        color: "var(--revit-text)",
+                        padding: "0 4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="coarse">Coarse</option>
+                      <option value="medium">Medium</option>
+                      <option value="fine">Fine</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="ribbon-group-label">Detail Level</div>
+              </div>
+            )}
+
+            {/* Sun Study */}
+            {onSunHourChange && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSunHourChange(sunHour !== null ? null : 12)
+                    }
+                    className={`ribbon-tool-btn ${sunHour !== null ? "ribbon-tool-active" : ""}`}
+                    title={
+                      sunHour !== null
+                        ? "Disable shadows"
+                        : "Enable sun/shadow study"
+                    }
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill={sunHour !== null ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <circle cx="12" cy="12" r="5" />
+                      <line x1="12" y1="1" x2="12" y2="4" />
+                      <line x1="12" y1="20" x2="12" y2="23" />
+                      <line x1="1" y1="12" x2="4" y2="12" />
+                      <line x1="20" y1="12" x2="23" y2="12" />
+                      <line x1="4.2" y1="4.2" x2="6.3" y2="6.3" />
+                      <line x1="17.7" y1="17.7" x2="19.8" y2="19.8" />
+                      <line x1="4.2" y1="19.8" x2="6.3" y2="17.7" />
+                      <line x1="17.7" y1="6.3" x2="19.8" y2="4.2" />
+                    </svg>
+                    <span className="ribbon-tool-label">
+                      {sunHour !== null ? `${Math.round(sunHour)}h` : "Sun"}
+                    </span>
+                  </button>
+                  {sunHour !== null && (
+                    <input
+                      type="range"
+                      min="5"
+                      max="20"
+                      step="0.5"
+                      value={sunHour}
+                      onChange={(e) =>
+                        onSunHourChange(Number.parseFloat(e.target.value))
+                      }
+                      title={`Sun time: ${Math.floor(sunHour)}:${String(Math.round((sunHour % 1) * 60)).padStart(2, "0")}`}
+                      style={{
+                        width: "80px",
+                        height: "20px",
+                        cursor: "pointer",
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="ribbon-group-label">Sun Study</div>
+              </div>
+            )}
+
+            {/* View Templates */}
+            {onSaveViewTemplate && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={onSaveViewTemplate}
+                    className="ribbon-tool-btn"
+                    title="Save current view settings as a template"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    <span className="ribbon-tool-label">Save</span>
+                  </button>
+                  {viewTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => onLoadViewTemplate?.(t)}
+                      className="ribbon-tool-btn"
+                      title={`Load template: ${t.name}`}
+                      style={{
+                        fontSize: "9px",
+                        maxWidth: "48px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span className="ribbon-tool-label">{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ribbon-group-label">Templates</div>
+              </div>
+            )}
           </div>
         )}
         {activeTab === "manage" && (
@@ -1894,6 +2929,47 @@ export default function RibbonToolbar({
                 ))}
               </div>
               <div className="ribbon-group-label">Schedules</div>
+            </div>
+
+            {/* Clash Detection */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-tools">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clashes = detectClashes(bimElements);
+                    if (clashes.length === 0) {
+                      alert("No clashes detected!");
+                    } else {
+                      alert(
+                        `${clashes.length} clash(es) found:\n\n${clashes
+                          .slice(0, 10)
+                          .map((c) => `- ${c.description}`)
+                          .join(
+                            "\n",
+                          )}${clashes.length > 10 ? `\n...and ${clashes.length - 10} more` : ""}`,
+                      );
+                    }
+                  }}
+                  className="ribbon-tool-btn"
+                  disabled={bimElements.length < 2}
+                  title="Check for clashing elements"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <circle cx="9" cy="9" r="6" />
+                    <circle cx="15" cy="15" r="6" />
+                    <path d="M12 6 L12 12 L18 12" strokeDasharray="2 2" />
+                  </svg>
+                  <span className="ribbon-tool-label">Clashes</span>
+                </button>
+              </div>
+              <div className="ribbon-group-label">Clash Detection</div>
             </div>
           </div>
         )}
