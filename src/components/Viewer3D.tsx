@@ -14,17 +14,21 @@ import type {
   CategoryVisibility,
   CreationTool,
   DEFAULT_PARAMS,
+  DetailLevel,
   Dimension3D,
   GridLine,
   GridSize,
   Level,
+  SectionBox,
   SelectedElement,
   SpatialNode,
+  SpotElevation,
   UnitSystem,
   Viewer3DHandle,
+  ViewFilterColorBy,
   WallAlignMode,
 } from "@/types";
-import { formatUnit } from "@/types";
+import { formatUnit, VIEW_FILTER_COLORS } from "@/types";
 import {
   buildBeamMesh,
   buildCeilingMesh,
@@ -34,6 +38,7 @@ import {
   buildDeskMesh,
   buildDoorMesh,
   buildDuctMesh,
+  buildFittingMesh,
   buildLightFixtureMesh,
   buildMeshForElement,
   buildPipeMesh,
@@ -48,6 +53,8 @@ import {
   buildToiletMesh,
   buildWallMesh,
   buildWindowMesh,
+  computeWallJoins,
+  detectMepConnections,
   GHOST_MATERIAL,
   getMaterialForElement,
   INVALID_GHOST_MATERIAL,
@@ -78,12 +85,75 @@ interface Viewer3DProps {
   categoryVisibility?: Record<string, CategoryVisibility>;
   dimensions3D?: Dimension3D[];
   onDimension3DCreated?: (dim: Dimension3D) => void;
+  spotElevations?: SpotElevation[];
+  onSpotElevationCreated?: (se: SpotElevation) => void;
   onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
+  onBimElementUpdate?: (id: string, updates: Partial<BimElement>) => void;
+  sectionBox?: SectionBox;
+  viewFilterColorBy?: ViewFilterColorBy;
+  detailLevel?: DetailLevel;
+  /** Sun hour (0-24) for shadow study. null = shadows disabled. */
+  sunHour?: number | null;
   levels?: Level[];
   unitSystem?: UnitSystem;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/** Create a text sprite for element tags (door tags, room tags, etc.) */
+function createTagSprite(text: string, color = "#ffffff"): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+  canvas.width = 256;
+  canvas.height = 64;
+  ctx.fillStyle = "rgba(30, 30, 30, 0.75)";
+  ctx.roundRect(0, 0, 256, 64, 6);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(100, 100, 100, 0.5)";
+  ctx.lineWidth = 1;
+  ctx.roundRect(0, 0, 256, 64, 6);
+  ctx.stroke();
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 32);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.2, 0.3, 1);
+  sprite.renderOrder = 100;
+  return sprite;
+}
+
+/** Generate tag text for a BIM element */
+function getTagText(el: BimElement): string | null {
+  const params = el.params as Record<string, number | boolean>;
+  switch (el.type) {
+    case "door": {
+      const w = ((params.width as number) ?? 0.9).toFixed(1);
+      const h = ((params.height as number) ?? 2.1).toFixed(1);
+      return `D: ${w}×${h}`;
+    }
+    case "window": {
+      const w = ((params.width as number) ?? 1.2).toFixed(1);
+      const h = ((params.height as number) ?? 1.2).toFixed(1);
+      return `W: ${w}×${h}`;
+    }
+    case "room": {
+      const area =
+        Math.abs(el.end.x - el.start.x) * Math.abs(el.end.z - el.start.z);
+      return `${el.name}\n${area.toFixed(1)} m²`;
+    }
+    default:
+      return null;
+  }
+}
 
 function buildGlobalId(mesh: THREE.Mesh): string {
   const gid = mesh.userData.GlobalId ?? mesh.userData.globalId;
@@ -139,7 +209,14 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     categoryVisibility,
     dimensions3D = [],
     onDimension3DCreated,
+    spotElevations = [],
+    onSpotElevationCreated,
     onContextMenu,
+    onBimElementUpdate,
+    sectionBox,
+    viewFilterColorBy = "none",
+    detailLevel = "medium",
+    sunHour = null,
     levels = [],
     unitSystem = "metric",
   },
@@ -177,6 +254,23 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   /** Map bimElement.id → THREE.Mesh for authored elements */
   const authoredMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
 
+  /** Map bimElement.id → THREE.Sprite for element tags (door/window/room labels) */
+  const tagSpritesRef = useRef<Map<string, THREE.Sprite>>(new Map());
+
+  /** MEP fitting meshes (auto-generated at connection points) */
+  const mepFittingsRef = useRef<THREE.Mesh[]>([]);
+
+  /** Whether initial zoom-to-fit has been performed for orthographic views */
+  const didOrthoZoomRef = useRef(false);
+
+  /** Sun directional light for shadow study */
+  const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
+
+  /** Section box clipping planes (6 planes forming a box) */
+  const sectionBoxPlanesRef = useRef<THREE.Plane[]>([]);
+  /** Section box wireframe helper */
+  const sectionBoxHelperRef = useRef<THREE.LineSegments | null>(null);
+
   // Snap refs
   const snapEnabledRef = useRef(snapEnabled);
   snapEnabledRef.current = snapEnabled;
@@ -207,6 +301,15 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
   } | null>(null);
   const boxSelectThreshold = 5; // min pixels to start box select
   const boxSelectUsedRef = useRef(false);
+
+  // Drag-to-move state
+  const dragMoveRef = useRef<{
+    elementId: string;
+    startPoint: { x: number; z: number };
+    origStart: { x: number; z: number };
+    origEnd: { x: number; z: number };
+  } | null>(null);
+  const dragMoveActiveRef = useRef(false);
 
   // Dimension labels
   const dimensionLabelsRef = useRef<THREE.Sprite[]>([]);
@@ -1140,6 +1243,64 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     (e: React.MouseEvent) => {
       const tool = creationToolRef.current;
       if (tool === "none") {
+        // Drag-to-move: update element position while dragging
+        if (dragMoveRef.current && onBimElementUpdate) {
+          const world = worldRef.current;
+          const container = containerRef.current;
+          if (world && container) {
+            const rect = container.getBoundingClientRect();
+            const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(
+              new THREE.Vector2(mx, my),
+              world.camera.three,
+            );
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const groundPt = new THREE.Vector3();
+            raycaster.ray.intersectPlane(groundPlane, groundPt);
+            if (groundPt) {
+              const drag = dragMoveRef.current;
+              let dx = groundPt.x - drag.startPoint.x;
+              let dz = groundPt.z - drag.startPoint.z;
+
+              // Snap to grid if enabled
+              if (snapEnabledRef.current) {
+                const gs = gridSizeRef.current;
+                dx = Math.round(dx / gs) * gs;
+                dz = Math.round(dz / gs) * gs;
+              }
+
+              dragMoveActiveRef.current = true;
+
+              // Move all selected elements
+              for (const id of selectedElementIds) {
+                const el = bimElements.find((b) => b.id === id);
+                if (!el) continue;
+                // For the primary element use stored originals; for others compute delta
+                if (id === drag.elementId) {
+                  onBimElementUpdate(id, {
+                    start: {
+                      x: drag.origStart.x + dx,
+                      z: drag.origStart.z + dz,
+                    },
+                    end: {
+                      x: drag.origEnd.x + dx,
+                      z: drag.origEnd.z + dz,
+                    },
+                  });
+                } else {
+                  onBimElementUpdate(id, {
+                    start: { x: el.start.x + dx, z: el.start.z + dz },
+                    end: { x: el.end.x + dx, z: el.end.z + dz },
+                  });
+                }
+              }
+            }
+          }
+          return;
+        }
+
         if (snapIndicatorRef.current) snapIndicatorRef.current.visible = false;
         clearGhost();
         doorSnapRef.current = null;
@@ -1153,8 +1314,12 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       // Ortho constraint: Shift locks to horizontal or vertical
       applyOrthoConstraint(hit, e.shiftKey);
 
-      // For gridline or dimension3d tool, just show snap indicator and ghost (no wall snap)
-      if (tool === "gridline" || tool === "dimension3d") {
+      // For gridline, dimension3d, or spotElevation, just show snap indicator (no wall snap)
+      if (
+        tool === "gridline" ||
+        tool === "dimension3d" ||
+        tool === "spotElevation"
+      ) {
         if (snapIndicatorRef.current) {
           snapIndicatorRef.current.position.set(hit.x, 0.02, hit.z);
           snapIndicatorRef.current.visible = true;
@@ -1191,28 +1356,75 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
       updateGhostPreview(hit);
     },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: selectedElementIds and bimElements accessed via refs for drag-move
     [
       raycastGround,
       raycastWalls,
       updateGhostPreview,
       clearGhost,
       applyOrthoConstraint,
+      onBimElementUpdate,
+      selectedElementIds,
+      bimElements,
     ],
   );
 
   // ── Box select handlers ─────────────────────────────────────
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (creationToolRef.current !== "none") return;
-    if (e.button !== 0) return; // left button only
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    boxSelectStartRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-  }, []);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (creationToolRef.current !== "none") return;
+      if (e.button !== 0) return; // left button only
+      const container = containerRef.current;
+      const world = worldRef.current;
+      if (!container || !world) return;
+      const rect = container.getBoundingClientRect();
+
+      // Check if clicking on a selected element to start drag-move
+      if (selectedElementIds.length > 0 && onBimElementUpdate) {
+        const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(mx, my), world.camera.three);
+        const meshes: THREE.Mesh[] = [];
+        world.scene.three.traverse((obj) => {
+          if (obj instanceof THREE.Mesh && obj.userData.bimElementId)
+            meshes.push(obj);
+        });
+        const intersects = raycaster.intersectObjects(meshes, false);
+        if (intersects.length > 0) {
+          const mesh = intersects[0].object as THREE.Mesh;
+          const hitId = mesh.userData.bimElementId as string;
+          if (selectedElementIds.includes(hitId)) {
+            // Raycast ground for the starting world-space position
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const groundPt = new THREE.Vector3();
+            raycaster.ray.intersectPlane(groundPlane, groundPt);
+            if (groundPt) {
+              const el = bimElements.find((b) => b.id === hitId);
+              if (el && !el.pinned) {
+                dragMoveRef.current = {
+                  elementId: hitId,
+                  startPoint: { x: groundPt.x, z: groundPt.z },
+                  origStart: { ...el.start },
+                  origEnd: { ...el.end },
+                };
+                // Disable camera controls during drag
+                world.camera.controls.enabled = false;
+                return; // Don't start box select
+              }
+            }
+          }
+        }
+      }
+
+      boxSelectStartRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+    },
+    [selectedElementIds, bimElements, onBimElementUpdate],
+  );
 
   const handleMouseMoveBoxSelect = useCallback((e: React.MouseEvent) => {
     const start = boxSelectStartRef.current;
@@ -1236,6 +1448,20 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      // End drag-to-move
+      if (dragMoveRef.current) {
+        dragMoveRef.current = null;
+        const wasDragging = dragMoveActiveRef.current;
+        dragMoveActiveRef.current = false;
+        const world = worldRef.current;
+        if (world) world.camera.controls.enabled = true;
+        if (wasDragging) {
+          // Prevent click from firing after drag
+          boxSelectUsedRef.current = true;
+          return;
+        }
+      }
+
       const start = boxSelectStartRef.current;
       boxSelectStartRef.current = null;
 
@@ -1302,7 +1528,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     if (!world?.scene?.three) return;
     const scene = world.scene.three;
 
-    // Remove stale meshes
+    // Remove stale meshes and tags
     const currentIds = new Set(bimElements.map((el) => el.id));
     for (const [id, mesh] of Array.from(authoredMeshesRef.current.entries())) {
       if (!currentIds.has(id)) {
@@ -1311,6 +1537,18 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         authoredMeshesRef.current.delete(id);
       }
     }
+    for (const [id, sprite] of Array.from(tagSpritesRef.current.entries())) {
+      if (!currentIds.has(id)) {
+        scene.remove(sprite);
+        (sprite.material as THREE.SpriteMaterial).map?.dispose();
+        sprite.material.dispose();
+        tagSpritesRef.current.delete(id);
+      }
+    }
+
+    // Compute wall join adjustments for clean corner/T-joint geometry
+    const walls = bimElements.filter((el) => el.type === "wall");
+    const wallJoins = computeWallJoins(walls);
 
     // Add or update meshes
     for (const el of bimElements) {
@@ -1321,8 +1559,55 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         existing.geometry.dispose();
       }
 
-      const material = getMaterialForElement(el);
-      const mesh = buildMeshForElement(el, material, bimElements);
+      let material: THREE.Material = getMaterialForElement(el);
+
+      // Phase-based graphic overrides
+      if (el.phase === "demolished") {
+        const phaseMat = (material as THREE.MeshStandardMaterial).clone();
+        phaseMat.color.set(0xff4444);
+        phaseMat.opacity = 0.4;
+        phaseMat.transparent = true;
+        material = phaseMat;
+      } else if (el.phase === "existing") {
+        const phaseMat = (material as THREE.MeshStandardMaterial).clone();
+        phaseMat.color.lerp(new THREE.Color(0x888888), 0.5);
+        material = phaseMat;
+      } else if (el.phase === "temporary") {
+        const phaseMat = (material as THREE.MeshStandardMaterial).clone();
+        phaseMat.opacity = 0.5;
+        phaseMat.transparent = true;
+        material = phaseMat;
+      }
+
+      // View filter color override
+      if (viewFilterColorBy !== "none") {
+        let filterColor: number | undefined;
+        if (viewFilterColorBy === "type") {
+          filterColor = VIEW_FILTER_COLORS[el.type];
+        } else if (viewFilterColorBy === "phase") {
+          filterColor = VIEW_FILTER_COLORS[el.phase ?? "new"];
+        } else if (viewFilterColorBy === "level") {
+          // Generate unique color per level using golden ratio hash
+          const levelIndex = levels.findIndex((l) => l.height === el.level);
+          const hue = ((levelIndex >= 0 ? levelIndex : 0) * 137.508) % 360;
+          filterColor = new THREE.Color().setHSL(hue / 360, 0.7, 0.5).getHex();
+        } else if (viewFilterColorBy === "material") {
+          filterColor = VIEW_FILTER_COLORS[el.material ?? "concrete"];
+        }
+        if (filterColor !== undefined) {
+          const filterMat = (material as THREE.MeshStandardMaterial).clone();
+          filterMat.color.set(filterColor);
+          material = filterMat;
+        }
+      }
+
+      const mesh = buildMeshForElement(
+        el,
+        material,
+        bimElements,
+        wallJoins,
+        detailLevel,
+      );
       mesh.name = el.name;
       mesh.userData = {
         bimElementId: el.id,
@@ -1333,8 +1618,238 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       };
       scene.add(mesh);
       authoredMeshesRef.current.set(el.id, mesh);
+
+      // Create/update element tags (door, window, room)
+      const tagText = getTagText(el);
+      const existingTag = tagSpritesRef.current.get(el.id);
+      if (existingTag) {
+        scene.remove(existingTag);
+        (existingTag.material as THREE.SpriteMaterial).map?.dispose();
+        existingTag.material.dispose();
+        tagSpritesRef.current.delete(el.id);
+      }
+      if (tagText) {
+        const color =
+          el.type === "door"
+            ? "#f59e0b"
+            : el.type === "window"
+              ? "#3b82f6"
+              : "#10b981";
+        const sprite = createTagSprite(tagText, color);
+        const cx = (el.start.x + el.end.x) / 2;
+        const cz = (el.start.z + el.end.z) / 2;
+        const tagHeight =
+          el.type === "room"
+            ? el.level + 0.5
+            : el.level +
+              ((el.params as Record<string, number>).height ?? 2.5) +
+              0.3;
+        sprite.position.set(cx, tagHeight, cz);
+        scene.add(sprite);
+        tagSpritesRef.current.set(el.id, sprite);
+      }
     }
-  }, [bimElements]);
+
+    // MEP fittings: detect connections and render fitting meshes
+    for (const fitting of mepFittingsRef.current) {
+      scene.remove(fitting);
+      fitting.geometry.dispose();
+    }
+    mepFittingsRef.current = [];
+    const mepConnections = detectMepConnections(bimElements);
+    const fittingMat = new THREE.MeshStandardMaterial({
+      color: 0xffa500,
+      roughness: 0.4,
+      metalness: 0.6,
+    });
+    for (const conn of mepConnections) {
+      const mesh = buildFittingMesh(conn, fittingMat);
+      mesh.userData._mepFitting = true;
+      scene.add(mesh);
+      mepFittingsRef.current.push(mesh);
+    }
+
+    // Auto zoom-to-fit for orthographic views on first element sync
+    if (
+      cameraPreset?.orthographic &&
+      !didOrthoZoomRef.current &&
+      bimElements.length > 0
+    ) {
+      didOrthoZoomRef.current = true;
+      const box = new THREE.Box3();
+      for (const mesh of Array.from(authoredMeshesRef.current.values())) {
+        box.expandByObject(mesh);
+      }
+      if (!box.isEmpty()) {
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 1);
+        const padding = maxDim * 0.3;
+        const [px, py, pz] = cameraPreset.position;
+        const dir = new THREE.Vector3(px, py, pz).normalize();
+        const dist = maxDim * 2;
+        world.camera.controls.setLookAt(
+          center.x + dir.x * dist,
+          center.y + dir.y * dist,
+          center.z + dir.z * dist,
+          center.x,
+          center.y,
+          center.z,
+          false,
+        );
+        // Set orthographic zoom to fit the model
+        const cam = world.camera.three as THREE.OrthographicCamera;
+        if (cam.isOrthographicCamera) {
+          const aspect = cam.right / cam.top || 1;
+          cam.top = (maxDim + padding) / 2;
+          cam.bottom = -(maxDim + padding) / 2;
+          cam.left = (-(maxDim + padding) * aspect) / 2;
+          cam.right = ((maxDim + padding) * aspect) / 2;
+          cam.updateProjectionMatrix();
+        }
+      }
+    }
+    // biome-ignore lint/correctness/useExhaustiveDependencies: viewFilterColorBy triggers material re-application
+  }, [bimElements, viewFilterColorBy, detailLevel]);
+
+  // ── Section box clipping ─────────────────────────────────────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three || !world?.renderer) return;
+    const scene = world.scene.three;
+    const renderer = world.renderer.three;
+
+    // Remove existing section box helper
+    if (sectionBoxHelperRef.current) {
+      scene.remove(sectionBoxHelperRef.current);
+      sectionBoxHelperRef.current.geometry.dispose();
+      sectionBoxHelperRef.current = null;
+    }
+
+    if (sectionBox?.enabled) {
+      const { min, max } = sectionBox;
+      // Create 6 clipping planes facing inward
+      const planes = [
+        new THREE.Plane(new THREE.Vector3(1, 0, 0), -min.x), // left
+        new THREE.Plane(new THREE.Vector3(-1, 0, 0), max.x), // right
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -min.y), // bottom
+        new THREE.Plane(new THREE.Vector3(0, -1, 0), max.y), // top
+        new THREE.Plane(new THREE.Vector3(0, 0, 1), -min.z), // front
+        new THREE.Plane(new THREE.Vector3(0, 0, -1), max.z), // back
+      ];
+      sectionBoxPlanesRef.current = planes;
+      renderer.clippingPlanes = planes;
+      renderer.localClippingEnabled = true;
+
+      // Add wireframe box helper
+      const boxGeo = new THREE.BoxGeometry(
+        max.x - min.x,
+        max.y - min.y,
+        max.z - min.z,
+      );
+      const edges = new THREE.EdgesGeometry(boxGeo);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0xffaa00,
+        transparent: true,
+        opacity: 0.6,
+      });
+      const helper = new THREE.LineSegments(edges, lineMat);
+      helper.position.set(
+        (min.x + max.x) / 2,
+        (min.y + max.y) / 2,
+        (min.z + max.z) / 2,
+      );
+      helper.userData._sectionBoxHelper = true;
+      scene.add(helper);
+      sectionBoxHelperRef.current = helper;
+    } else {
+      sectionBoxPlanesRef.current = [];
+      renderer.clippingPlanes = [];
+      renderer.localClippingEnabled = false;
+    }
+  }, [sectionBox]);
+
+  // ── Sun/shadow study ────────────────────────────────────────
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three || !world?.renderer) return;
+    const scene = world.scene.three;
+    const renderer = world.renderer.three;
+
+    if (sunHour !== null && sunHour !== undefined) {
+      // Enable shadows on the renderer
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      // Compute sun position from hour (simplified solar arc)
+      // Hour 6 = sunrise (east), 12 = noon (overhead), 18 = sunset (west)
+      const hourAngle = ((sunHour - 12) / 12) * Math.PI; // -PI to PI
+      const altitude = Math.cos(hourAngle) * 0.8; // max 0.8 at noon
+      const sunDist = 30;
+      const sunX = Math.sin(hourAngle) * sunDist;
+      const sunY = Math.max(altitude, 0.05) * sunDist;
+      const sunZ = -Math.cos(hourAngle) * sunDist * 0.3;
+
+      if (!sunLightRef.current) {
+        const sun = new THREE.DirectionalLight(0xfff5e0, 1.2);
+        sun.castShadow = true;
+        sun.shadow.mapSize.width = 2048;
+        sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.left = -30;
+        sun.shadow.camera.right = 30;
+        sun.shadow.camera.top = 30;
+        sun.shadow.camera.bottom = -30;
+        sun.shadow.camera.near = 0.5;
+        sun.shadow.camera.far = 100;
+        sun.shadow.bias = -0.001;
+        scene.add(sun);
+        scene.add(sun.target);
+        sunLightRef.current = sun;
+
+        // Add ground plane to receive shadows
+        const groundGeo = new THREE.PlaneGeometry(100, 100);
+        const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.01;
+        ground.receiveShadow = true;
+        ground.userData._shadowGround = true;
+        scene.add(ground);
+      }
+
+      const sun = sunLightRef.current;
+      sun.position.set(sunX, sunY, sunZ);
+      sun.target.position.set(0, 0, 0);
+
+      // Warm color at sunrise/sunset, white at noon
+      const warmth = 1 - altitude;
+      sun.color.setRGB(1, 1 - warmth * 0.15, 1 - warmth * 0.3);
+
+      // Enable shadow casting on all authored meshes
+      for (const mesh of Array.from(authoredMeshesRef.current.values())) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      }
+    } else {
+      // Disable shadows
+      if (sunLightRef.current) {
+        scene.remove(sunLightRef.current);
+        scene.remove(sunLightRef.current.target);
+        sunLightRef.current = null;
+        // Remove shadow ground
+        scene.traverse((obj) => {
+          if (obj.userData._shadowGround) scene.remove(obj);
+        });
+      }
+      renderer.shadowMap.enabled = false;
+      for (const mesh of Array.from(authoredMeshesRef.current.values())) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+      }
+    }
+  }, [sunHour, bimElements]);
 
   // ── 2D CAD rendering for orthographic views ────────────────
   // In ortho views (plan, elevation, section), render elements as clean
@@ -1390,14 +1905,15 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
         edgeObjectsRef.current.set(id, edgeLines);
       }
 
-      // Also apply to IFC model meshes
+      // Also apply to IFC model meshes (skip OBC infrastructure like grid ShaderMaterials)
       scene.traverse((obj) => {
         if (
           obj instanceof THREE.Mesh &&
           !obj.userData.bimElementId &&
           !obj.userData._gridGeo &&
           !obj.userData._levelGeo &&
-          obj.geometry
+          obj.geometry &&
+          !(obj.material instanceof THREE.ShaderMaterial)
         ) {
           const meshId = `_ifc_${obj.id}`;
           if (!originalMaterialsRef.current.has(meshId)) {
@@ -1875,6 +2391,87 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     }
   }, [dimensions3D, createTextSprite]);
 
+  // ── Sync Spot Elevations → scene ──────────────────────────
+
+  const spotElevationObjectsRef = useRef<Map<string, THREE.Group>>(new Map());
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three) return;
+    const scene = world.scene.three;
+
+    // Remove stale
+    const currentIds = new Set(spotElevations.map((s) => s.id));
+    for (const [id, group] of Array.from(
+      spotElevationObjectsRef.current.entries(),
+    )) {
+      if (!currentIds.has(id)) {
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Sprite) {
+            (obj.material as THREE.SpriteMaterial).map?.dispose();
+            (obj.material as THREE.SpriteMaterial).dispose();
+          }
+        });
+        spotElevationObjectsRef.current.delete(id);
+      }
+    }
+
+    for (const se of spotElevations) {
+      if (spotElevationObjectsRef.current.has(se.id)) continue;
+
+      const group = new THREE.Group();
+
+      // Vertical line from ground to elevation point
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(se.position.x, 0, se.position.z),
+        new THREE.Vector3(se.position.x, se.position.y + 0.5, se.position.z),
+      ]);
+      const line = new THREE.Line(
+        lineGeo,
+        new THREE.LineBasicMaterial({ color: 0xff6b6b }),
+      );
+      group.add(line);
+
+      // Elevation label
+      const label = `EL: ${se.elevation.toFixed(2)}m`;
+      const sprite = createTextSprite(
+        label,
+        new THREE.Vector3(se.position.x, se.position.y + 0.8, se.position.z),
+      );
+      group.add(sprite);
+
+      // Cross marker at base
+      const crossSize = 0.15;
+      for (const [dx, dz] of [
+        [1, 1],
+        [1, -1],
+      ]) {
+        const cGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(
+            se.position.x - crossSize * dx,
+            0.02,
+            se.position.z - crossSize * dz,
+          ),
+          new THREE.Vector3(
+            se.position.x + crossSize * dx,
+            0.02,
+            se.position.z + crossSize * dz,
+          ),
+        ]);
+        group.add(
+          new THREE.Line(
+            cGeo,
+            new THREE.LineBasicMaterial({ color: 0xff6b6b }),
+          ),
+        );
+      }
+
+      scene.add(group);
+      spotElevationObjectsRef.current.set(se.id, group);
+    }
+  }, [spotElevations, createTextSprite]);
+
   // ── Visibility / Graphics filtering ───────────────────────
 
   useEffect(() => {
@@ -1955,6 +2552,37 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
             distance,
           };
           onDimension3DCreated?.(dim);
+          return;
+        }
+
+        // Spot elevation creation (single-click)
+        if (tool === "spotElevation") {
+          clearGhost();
+          const se: SpotElevation = {
+            id: crypto.randomUUID(),
+            position: { x: point.x, y: 0, z: point.z },
+            elevation: 0,
+          };
+          // Raycast to find the actual surface elevation at this point
+          const world = worldRef.current;
+          if (world) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(
+              new THREE.Vector3(point.x, 100, point.z),
+              new THREE.Vector3(0, -1, 0),
+            );
+            const meshes: THREE.Mesh[] = [];
+            world.scene.three.traverse((obj) => {
+              if (obj instanceof THREE.Mesh && obj.userData.bimElementId)
+                meshes.push(obj);
+            });
+            const hits = raycaster.intersectObjects(meshes, false);
+            if (hits.length > 0) {
+              se.position.y = hits[0].point.y;
+              se.elevation = hits[0].point.y;
+            }
+          }
+          onSpotElevationCreated?.(se);
           return;
         }
 
@@ -2208,7 +2836,11 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
 
   // ── Cursor style ───────────────────────────────────────────
 
-  const cursorStyle = creationTool !== "none" ? "crosshair" : "default";
+  const cursorStyle = dragMoveActiveRef.current
+    ? "grabbing"
+    : creationTool !== "none"
+      ? "crosshair"
+      : "default";
 
   if (initError) {
     return (
