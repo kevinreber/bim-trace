@@ -97,7 +97,15 @@ export type BimElementType =
   | "lightFixture"
   | "room";
 
-export type CreationTool = "none" | BimElementType | "gridline" | "dimension3d";
+export type CreationTool =
+  | "none"
+  | BimElementType
+  | "gridline"
+  | "dimension3d"
+  | "spotElevation";
+
+/** Construction phase for phasing/demolition tracking */
+export type BimPhase = "existing" | "new" | "demolished" | "temporary";
 
 export interface BimElementParams {
   wall: { height: number; thickness: number };
@@ -153,6 +161,10 @@ export interface BimElement {
   hostWallId?: string;
   /** Optional material override; falls back to type default if omitted */
   material?: BimMaterialType;
+  /** When true, element cannot be moved, rotated, or deleted */
+  pinned?: boolean;
+  /** Construction phase: existing, new, demolished, temporary */
+  phase?: BimPhase;
 }
 
 /** Default parametric values for each element type */
@@ -343,6 +355,14 @@ export interface Dimension3D {
   distance: number;
 }
 
+// ── Spot Elevations ────────────────────────────────────────
+
+export interface SpotElevation {
+  id: string;
+  position: { x: number; y: number; z: number };
+  elevation: number;
+}
+
 // ── Visibility / Graphics Overrides ─────────────────────────
 
 export interface CategoryVisibility {
@@ -368,6 +388,68 @@ export interface SavedView {
   target: [number, number, number];
   orthographic: boolean;
 }
+
+// ── Detail Level ───────────────────────────────────────────
+
+export type DetailLevel = "coarse" | "medium" | "fine";
+
+// ── View Templates ─────────────────────────────────────────
+
+export interface ViewTemplate {
+  id: string;
+  name: string;
+  detailLevel: DetailLevel;
+  colorBy: ViewFilterColorBy;
+  categoryVisibility: Record<string, CategoryVisibility>;
+}
+
+// ── Section Box ────────────────────────────────────────────
+
+export interface SectionBox {
+  enabled: boolean;
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+}
+
+// ── View Filters ───────────────────────────────────────────
+
+export type ViewFilterColorBy =
+  | "none"
+  | "type"
+  | "level"
+  | "phase"
+  | "material";
+
+/** Color palette for view filter visualization */
+export const VIEW_FILTER_COLORS: Record<string, number> = {
+  wall: 0xe8e0d4,
+  column: 0xc0c0c0,
+  slab: 0xbab5ab,
+  door: 0xf59e0b,
+  window: 0x3b82f6,
+  beam: 0xa0a0a0,
+  ceiling: 0xf5f5f0,
+  roof: 0x8b4513,
+  stair: 0xc8b89a,
+  railing: 0x404040,
+  curtainWall: 0x6ec6e6,
+  table: 0x8b5e3c,
+  chair: 0x6b4226,
+  shelving: 0x9e7c4f,
+  desk: 0x7a5c3c,
+  toilet: 0xf0f0f0,
+  sink: 0xf5f5f5,
+  duct: 0x808080,
+  pipe: 0x606060,
+  lightFixture: 0xe0e0e0,
+  room: 0x93c5fd,
+  // Phase colors
+  existing: 0x888888,
+  new: 0x4ade80,
+  demolished: 0xff4444,
+  temporary: 0xfbbf24,
+  // Level colors (generated dynamically)
+};
 
 // ── Schedule View ───────────────────────────────────────────
 
