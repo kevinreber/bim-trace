@@ -1,5 +1,10 @@
 import * as THREE from "three";
-import type { BimElement, BimElementType, BimMaterialType } from "@/types";
+import type {
+  BimElement,
+  BimElementType,
+  BimMaterialType,
+  DetailLevel,
+} from "@/types";
 import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
 
 // ── Materials ──────────────────────────────────────────────────
@@ -170,6 +175,195 @@ export interface WallOpening {
   bottomOffset: number;
 }
 
+// ── Wall join types ──────────────────────────────────────────
+
+/** How much to extend or trim a wall endpoint for a clean join */
+export interface WallJoinAdjustment {
+  /** Extension at the start of the wall (positive = extend, negative = trim) */
+  startExtension: number;
+  /** Extension at the end of the wall (positive = extend, negative = trim) */
+  endExtension: number;
+}
+
+/** Tolerance for snapping wall endpoints together (meters) */
+const WALL_JOIN_TOLERANCE = 0.15;
+
+/**
+ * Compute wall join adjustments for all walls.
+ * Detects L-joints (corner) and T-joints where wall endpoints meet,
+ * and computes geometry extensions/trims for clean mitered corners.
+ */
+export function computeWallJoins(
+  walls: BimElement[],
+): Map<string, WallJoinAdjustment> {
+  const adjustments = new Map<string, WallJoinAdjustment>();
+
+  // Initialize all walls with zero adjustment
+  for (const w of walls) {
+    adjustments.set(w.id, { startExtension: 0, endExtension: 0 });
+  }
+
+  // For each pair of walls, check if their endpoints connect
+  for (let i = 0; i < walls.length; i++) {
+    const wA = walls[i];
+    const thA = (wA.params as { thickness: number }).thickness;
+    const dxA = wA.end.x - wA.start.x;
+    const dzA = wA.end.z - wA.start.z;
+    const lenA = Math.sqrt(dxA * dxA + dzA * dzA);
+    if (lenA < 0.01) continue;
+    // Wall A direction unit vector
+    const dirAx = dxA / lenA;
+    const dirAz = dzA / lenA;
+
+    for (let j = i + 1; j < walls.length; j++) {
+      const wB = walls[j];
+      const thB = (wB.params as { thickness: number }).thickness;
+      const dxB = wB.end.x - wB.start.x;
+      const dzB = wB.end.z - wB.start.z;
+      const lenB = Math.sqrt(dxB * dxB + dzB * dzB);
+      if (lenB < 0.01) continue;
+      const dirBx = dxB / lenB;
+      const dirBz = dzB / lenB;
+
+      // Check all 4 endpoint combinations: A.start↔B.start, A.start↔B.end,
+      // A.end↔B.start, A.end↔B.end
+      const endpoints: Array<{
+        ptA: { x: number; z: number };
+        ptB: { x: number; z: number };
+        aIsStart: boolean;
+        bIsStart: boolean;
+      }> = [
+        { ptA: wA.start, ptB: wB.start, aIsStart: true, bIsStart: true },
+        { ptA: wA.start, ptB: wB.end, aIsStart: true, bIsStart: false },
+        { ptA: wA.end, ptB: wB.start, aIsStart: false, bIsStart: true },
+        { ptA: wA.end, ptB: wB.end, aIsStart: false, bIsStart: false },
+      ];
+
+      for (const ep of endpoints) {
+        const dist = Math.sqrt(
+          (ep.ptA.x - ep.ptB.x) ** 2 + (ep.ptA.z - ep.ptB.z) ** 2,
+        );
+        if (dist > WALL_JOIN_TOLERANCE) continue;
+
+        // Walls are connected at this endpoint pair
+        // Compute the angle between the two wall directions
+        const dot = dirAx * dirBx + dirAz * dirBz;
+        const cross = dirAx * dirBz - dirAz * dirBx;
+        const absDot = Math.abs(dot);
+        const absCross = Math.abs(cross);
+
+        // Skip near-parallel walls (collinear, angle < 10°)
+        if (absCross < 0.17) continue;
+
+        // Compute miter extension for each wall
+        // For a corner join, each wall extends by half the other wall's thickness / sin(angle)
+        const sinAngle = absCross; // |sin(θ)| since dirs are unit vectors
+        const extA = thB / 2 / sinAngle;
+        const extB = thA / 2 / sinAngle;
+
+        // Cap extension to prevent extreme values at very acute angles
+        const maxExt = Math.max(thA, thB) * 2;
+        const clampedExtA = Math.min(extA, maxExt);
+        const clampedExtB = Math.min(extB, maxExt);
+
+        const adjA = adjustments.get(wA.id)!;
+        const adjB = adjustments.get(wB.id)!;
+
+        // For wall A: if the connection is at its start, extend the start; if at end, extend the end
+        if (ep.aIsStart) {
+          adjA.startExtension = Math.max(adjA.startExtension, clampedExtA);
+        } else {
+          adjA.endExtension = Math.max(adjA.endExtension, clampedExtA);
+        }
+
+        if (ep.bIsStart) {
+          adjB.startExtension = Math.max(adjB.startExtension, clampedExtB);
+        } else {
+          adjB.endExtension = Math.max(adjB.endExtension, clampedExtB);
+        }
+      }
+
+      // T-joint detection: check if one wall's endpoint lands on the other wall's body
+      checkTJoint(
+        wA,
+        wB,
+        dirAx,
+        dirAz,
+        lenA,
+        thA,
+        dirBx,
+        dirBz,
+        lenB,
+        thB,
+        adjustments,
+      );
+      checkTJoint(
+        wB,
+        wA,
+        dirBx,
+        dirBz,
+        lenB,
+        thB,
+        dirAx,
+        dirAz,
+        lenA,
+        thA,
+        adjustments,
+      );
+    }
+  }
+
+  return adjustments;
+}
+
+/**
+ * Check if wall B's endpoints land on wall A's body (T-joint).
+ * If so, extend wall B to reach wall A's centerline.
+ */
+function checkTJoint(
+  wA: BimElement,
+  wB: BimElement,
+  dirAx: number,
+  dirAz: number,
+  lenA: number,
+  thA: number,
+  _dirBx: number,
+  _dirBz: number,
+  _lenB: number,
+  _thB: number,
+  adjustments: Map<string, WallJoinAdjustment>,
+): void {
+  // Normal of wall A (perpendicular)
+  const normAx = -dirAz;
+  const normAz = dirAx;
+
+  for (const bIsStart of [true, false]) {
+    const pt = bIsStart ? wB.start : wB.end;
+
+    // Project pt onto wall A's axis
+    const relX = pt.x - wA.start.x;
+    const relZ = pt.z - wA.start.z;
+    const along = relX * dirAx + relZ * dirAz;
+    const perp = Math.abs(relX * normAx + relZ * normAz);
+
+    // Check if point is within wall A's length range and near its surface
+    if (along < -WALL_JOIN_TOLERANCE || along > lenA + WALL_JOIN_TOLERANCE)
+      continue;
+    if (perp > thA * 0.5 + WALL_JOIN_TOLERANCE && perp < thA * 1.5) {
+      // Wall B endpoint is near wall A's surface — extend B to reach A's centerline
+      const ext = perp - thA * 0.5;
+      if (ext > 0 && ext < thA * 2) {
+        const adjB = adjustments.get(wB.id)!;
+        if (bIsStart) {
+          adjB.startExtension = Math.max(adjB.startExtension, thA / 2);
+        } else {
+          adjB.endExtension = Math.max(adjB.endExtension, thA / 2);
+        }
+      }
+    }
+  }
+}
+
 // ── Geometry builders ─────────────────────────────────────────
 
 export function buildWallMesh(
@@ -180,15 +374,28 @@ export function buildWallMesh(
   level: number,
   material: THREE.Material,
   openings?: WallOpening[],
+  joinAdjustment?: WallJoinAdjustment,
 ): THREE.Mesh {
   const dx = end.x - start.x;
   const dz = end.z - start.z;
-  const length = Math.sqrt(dx * dx + dz * dz);
-  if (length < 0.01) return new THREE.Mesh();
+  const originalLength = Math.sqrt(dx * dx + dz * dz);
+  if (originalLength < 0.01) return new THREE.Mesh();
+
+  // Apply join extensions
+  const startExt = joinAdjustment?.startExtension ?? 0;
+  const endExt = joinAdjustment?.endExtension ?? 0;
+  const length = originalLength + startExt + endExt;
+
+  // Shift center to account for asymmetric extensions
+  const dirX = dx / originalLength;
+  const dirZ = dz / originalLength;
+  const centerShiftAlongAxis = (endExt - startExt) / 2;
 
   let geo: THREE.BufferGeometry;
 
-  if (openings && openings.length > 0) {
+  // Always use ExtrudeGeometry when we have openings OR join adjustments
+  // (openings need to be shifted to account for the start extension)
+  if ((openings && openings.length > 0) || startExt > 0 || endExt > 0) {
     const shape = new THREE.Shape();
     shape.moveTo(0, 0);
     shape.lineTo(length, 0);
@@ -196,21 +403,25 @@ export function buildWallMesh(
     shape.lineTo(0, height);
     shape.lineTo(0, 0);
 
-    for (const op of openings) {
-      const halfW = op.width / 2;
-      const left = Math.max(0, op.centerAlongWall - halfW);
-      const right = Math.min(length, op.centerAlongWall + halfW);
-      const bottom = Math.max(0, op.bottomOffset);
-      const top = Math.min(height, op.bottomOffset + op.height);
-      if (right <= left || top <= bottom) continue;
+    if (openings) {
+      for (const op of openings) {
+        const halfW = op.width / 2;
+        // Shift opening positions by startExt since the wall shape now starts earlier
+        const center = op.centerAlongWall + startExt;
+        const left = Math.max(0, center - halfW);
+        const right = Math.min(length, center + halfW);
+        const bottom = Math.max(0, op.bottomOffset);
+        const top = Math.min(height, op.bottomOffset + op.height);
+        if (right <= left || top <= bottom) continue;
 
-      const hole = new THREE.Path();
-      hole.moveTo(left, bottom);
-      hole.lineTo(right, bottom);
-      hole.lineTo(right, top);
-      hole.lineTo(left, top);
-      hole.lineTo(left, bottom);
-      shape.holes.push(hole);
+        const hole = new THREE.Path();
+        hole.moveTo(left, bottom);
+        hole.lineTo(right, bottom);
+        hole.lineTo(right, top);
+        hole.lineTo(left, top);
+        hole.lineTo(left, bottom);
+        shape.holes.push(hole);
+      }
     }
 
     geo = new THREE.ExtrudeGeometry(shape, {
@@ -224,8 +435,8 @@ export function buildWallMesh(
   }
 
   const mesh = new THREE.Mesh(geo, material);
-  const cx = (start.x + end.x) / 2;
-  const cz = (start.z + end.z) / 2;
+  const cx = (start.x + end.x) / 2 + dirX * centerShiftAlongAxis;
+  const cz = (start.z + end.z) / 2 + dirZ * centerShiftAlongAxis;
   mesh.position.set(cx, level + height / 2, cz);
   mesh.rotation.y = -Math.atan2(dz, dx);
   return mesh;
@@ -916,6 +1127,268 @@ export function buildRoomMesh(
   return mesh;
 }
 
+// ── Coarse LOD (simple bounding box for all element types) ────
+
+function buildCoarseMesh(el: BimElement, material: THREE.Material): THREE.Mesh {
+  const p = el.params as Record<string, number>;
+  const height = p.height ?? 3;
+  const thickness = p.thickness ?? p.width ?? p.radius ?? p.diameter ?? 0.2;
+  const depth = p.depth ?? thickness;
+
+  const dx = el.end.x - el.start.x;
+  const dz = el.end.z - el.start.z;
+  const length = Math.sqrt(dx * dx + dz * dz);
+
+  // Linear elements (walls, beams, etc.)
+  if (length > 0.1) {
+    const geo = new THREE.BoxGeometry(
+      Math.max(length, 0.1),
+      height,
+      Math.max(thickness, 0.1),
+    );
+    const mesh = new THREE.Mesh(geo, material);
+    const cx = (el.start.x + el.end.x) / 2;
+    const cz = (el.start.z + el.end.z) / 2;
+    mesh.position.set(cx, el.level + height / 2, cz);
+    mesh.rotation.y = -Math.atan2(dz, dx);
+    return mesh;
+  }
+
+  // Point elements (columns, furniture, fixtures)
+  const w = Math.max(thickness, 0.1);
+  const d = Math.max(depth, 0.1);
+  const geo = new THREE.BoxGeometry(w, height, d);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(el.start.x, el.level + height / 2, el.start.z);
+  if (el.rotation) mesh.rotation.y = el.rotation;
+  return mesh;
+}
+
+// ── Room area computation ─────────────────────────────────────
+
+/**
+ * Compute the area of a room element.
+ * For rectangular rooms (defined by start/end), area = width × depth.
+ * Returns area in square meters.
+ */
+export function computeRoomArea(room: BimElement): number {
+  const dx = Math.abs(room.end.x - room.start.x);
+  const dz = Math.abs(room.end.z - room.start.z);
+  return dx * dz;
+}
+
+/**
+ * Compute the perimeter of a room element.
+ * Returns perimeter in meters.
+ */
+export function computeRoomPerimeter(room: BimElement): number {
+  const dx = Math.abs(room.end.x - room.start.x);
+  const dz = Math.abs(room.end.z - room.start.z);
+  return 2 * (dx + dz);
+}
+
+// ── Clash detection ───────────────────────────────────────────
+
+export interface ClashResult {
+  elementA: string;
+  elementB: string;
+  description: string;
+}
+
+/**
+ * Detect clashing (overlapping) BIM elements using bounding box intersection.
+ * Returns pairs of elements whose bounding boxes overlap.
+ */
+export function detectClashes(elements: BimElement[]): ClashResult[] {
+  const clashes: ClashResult[] = [];
+
+  // Compute bounding boxes for each element
+  const boxes: Array<{
+    id: string;
+    type: string;
+    name: string;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minZ: number;
+    maxZ: number;
+  }> = [];
+
+  for (const el of elements) {
+    const p = el.params as Record<string, number>;
+    const height = p.height ?? 3;
+    const thickness = p.thickness ?? p.width ?? p.radius ?? p.diameter ?? 0.2;
+    const half = thickness / 2;
+
+    const minX = Math.min(el.start.x, el.end.x) - half;
+    const maxX = Math.max(el.start.x, el.end.x) + half;
+    const minZ = Math.min(el.start.z, el.end.z) - half;
+    const maxZ = Math.max(el.start.z, el.end.z) + half;
+    const minY = el.level;
+    const maxY = el.level + height;
+
+    boxes.push({
+      id: el.id,
+      type: el.type,
+      name: el.name,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      minZ,
+      maxZ,
+    });
+  }
+
+  // Check all pairs for AABB overlap
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i];
+    for (let j = i + 1; j < boxes.length; j++) {
+      const b = boxes[j];
+
+      // Skip same-type elements that are expected to share space
+      // (e.g. doors/windows hosted on walls)
+      const elA = elements[i];
+      const elB = elements[j];
+      if (elA.hostWallId === elB.id || elB.hostWallId === elA.id) continue;
+      if (elA.type === "room" || elB.type === "room") continue;
+
+      // Check AABB intersection
+      if (
+        a.minX < b.maxX &&
+        a.maxX > b.minX &&
+        a.minY < b.maxY &&
+        a.maxY > b.minY &&
+        a.minZ < b.maxZ &&
+        a.maxZ > b.minZ
+      ) {
+        clashes.push({
+          elementA: a.id,
+          elementB: b.id,
+          description: `${a.name} (${a.type}) clashes with ${b.name} (${b.type})`,
+        });
+      }
+    }
+  }
+
+  return clashes;
+}
+
+// ── MEP connectivity ──────────────────────────────────────────
+
+export interface MepConnection {
+  elementA: string;
+  elementB: string;
+  point: { x: number; y: number; z: number };
+  type: "elbow" | "tee" | "straight";
+}
+
+const MEP_CONNECT_TOLERANCE = 0.3;
+
+/**
+ * Detect MEP connections between ducts and pipes.
+ * Returns connection points where fittings should be placed.
+ */
+export function detectMepConnections(elements: BimElement[]): MepConnection[] {
+  const mepElements = elements.filter(
+    (el) => el.type === "duct" || el.type === "pipe",
+  );
+  const connections: MepConnection[] = [];
+
+  for (let i = 0; i < mepElements.length; i++) {
+    const a = mepElements[i];
+    for (let j = i + 1; j < mepElements.length; j++) {
+      const b = mepElements[j];
+
+      // Check all endpoint combinations
+      const endpoints = [
+        { ptA: a.start, ptB: b.start },
+        { ptA: a.start, ptB: b.end },
+        { ptA: a.end, ptB: b.start },
+        { ptA: a.end, ptB: b.end },
+      ];
+
+      for (const ep of endpoints) {
+        const dist = Math.sqrt(
+          (ep.ptA.x - ep.ptB.x) ** 2 + (ep.ptA.z - ep.ptB.z) ** 2,
+        );
+        if (dist > MEP_CONNECT_TOLERANCE) continue;
+
+        // Determine fitting type from angle between elements
+        const dxA = a.end.x - a.start.x;
+        const dzA = a.end.z - a.start.z;
+        const dxB = b.end.x - b.start.x;
+        const dzB = b.end.z - b.start.z;
+        const lenA = Math.sqrt(dxA * dxA + dzA * dzA);
+        const lenB = Math.sqrt(dxB * dxB + dzB * dzB);
+        if (lenA < 0.01 || lenB < 0.01) continue;
+
+        const dot = (dxA * dxB + dzA * dzB) / (lenA * lenB);
+        const absDot = Math.abs(dot);
+
+        let type: MepConnection["type"];
+        if (absDot > 0.95) {
+          type = "straight";
+        } else if (absDot < 0.3) {
+          type = "elbow";
+        } else {
+          type = "tee";
+        }
+
+        const midX = (ep.ptA.x + ep.ptB.x) / 2;
+        const midZ = (ep.ptA.z + ep.ptB.z) / 2;
+        const y = Math.max(a.level, b.level);
+
+        connections.push({
+          elementA: a.id,
+          elementB: b.id,
+          point: { x: midX, y, z: midZ },
+          type,
+        });
+      }
+    }
+  }
+
+  return connections;
+}
+
+/**
+ * Build a fitting mesh at a connection point.
+ */
+export function buildFittingMesh(
+  conn: MepConnection,
+  material: THREE.Material,
+): THREE.Mesh {
+  let geo: THREE.BufferGeometry;
+
+  switch (conn.type) {
+    case "elbow": {
+      // Torus segment for elbow
+      geo = new THREE.TorusGeometry(0.15, 0.05, 8, 12, Math.PI / 2);
+      break;
+    }
+    case "tee": {
+      // Cross-shaped geometry
+      const g1 = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
+      const g2 = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
+      g2.rotateZ(Math.PI / 2);
+      const merged = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+      geo = merged;
+      break;
+    }
+    default: {
+      // Straight coupling
+      geo = new THREE.CylinderGeometry(0.07, 0.07, 0.1, 8);
+      break;
+    }
+  }
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(conn.point.x, conn.point.y, conn.point.z);
+  return mesh;
+}
+
 // ── Wall openings ─────────────────────────────────────────────
 
 export function computeWallOpenings(
@@ -955,11 +1428,24 @@ export function buildMeshForElement(
   el: BimElement,
   material: THREE.Material,
   allElements?: BimElement[],
+  wallJoins?: Map<string, WallJoinAdjustment>,
+  detailLevel: DetailLevel = "medium",
 ): THREE.Mesh {
+  // Coarse mode: render everything as simple bounding boxes
+  if (detailLevel === "coarse") {
+    return buildCoarseMesh(el, material);
+  }
+
   switch (el.type) {
     case "wall": {
       const p = el.params as { height: number; thickness: number };
-      const openings = allElements ? computeWallOpenings(el, allElements) : [];
+      const openings =
+        detailLevel === "fine" && allElements
+          ? computeWallOpenings(el, allElements)
+          : allElements
+            ? computeWallOpenings(el, allElements)
+            : [];
+      const joinAdj = wallJoins?.get(el.id);
       return buildWallMesh(
         el.start,
         el.end,
@@ -968,6 +1454,7 @@ export function buildMeshForElement(
         el.level,
         material,
         openings,
+        joinAdj,
       );
     }
     case "column": {
