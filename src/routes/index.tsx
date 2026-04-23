@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AiGenerateModal from "@/components/AiGenerateModal";
 import ContextMenu from "@/components/ContextMenu";
+import KeynoteLegend from "@/components/KeynoteLegend";
 import RibbonToolbar from "@/components/RibbonToolbar";
 import ScheduleModal from "@/components/ScheduleModal";
+import SheetComposer from "@/components/SheetComposer";
 import { ProjectBrowser, PropertiesPanel } from "@/components/Sidebar";
 import ViewportPane from "@/components/ViewportPane";
 import {
@@ -16,9 +18,11 @@ import {
 } from "@/persistence";
 import type {
   AnnotationTool,
+  BimConstraint,
   BimElement,
   CategoryVisibility,
   CreationTool,
+  DesignOption,
   DetailLevel,
   Dimension3D,
   ElementGroup,
@@ -30,8 +34,10 @@ import type {
   ScheduleType,
   SectionBox,
   SelectedElement,
+  Sheet,
   SpatialNode,
   SpotElevation,
+  Topography,
   UndoAction,
   UnitSystem,
   Viewer3DHandle,
@@ -41,6 +47,7 @@ import type {
   ViewPaneType,
   ViewTemplate,
   WallAlignMode,
+  Workset,
 } from "@/types";
 import {
   DEFAULT_LEVELS,
@@ -128,6 +135,54 @@ function Home() {
 
   // Sun/shadow study
   const [sunHour, setSunHour] = useState<number | null>(null);
+
+  // Sheet composition
+  const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [sheetComposerOpen, setSheetComposerOpen] = useState(false);
+
+  // Design options
+  const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
+
+  // Keynote legend
+  const [keynoteLegendOpen, setKeynoteLegendOpen] = useState(false);
+
+  // Parametric constraints
+  const [constraints, setConstraints] = useState<BimConstraint[]>([]);
+
+  // Topography
+  const [topography, setTopography] = useState<Topography | null>(null);
+
+  // Worksets (worksharing simulation)
+  const [worksets, setWorksets] = useState<Workset[]>([
+    {
+      id: "ws-shared",
+      name: "Shared Levels and Grids",
+      owner: "You",
+      editable: true,
+      elementIds: [],
+    },
+    {
+      id: "ws-arch",
+      name: "Architecture",
+      owner: "You",
+      editable: true,
+      elementIds: [],
+    },
+    {
+      id: "ws-struct",
+      name: "Structure",
+      owner: "You",
+      editable: true,
+      elementIds: [],
+    },
+    {
+      id: "ws-mep",
+      name: "MEP",
+      owner: "You",
+      editable: true,
+      elementIds: [],
+    },
+  ]);
 
   // View templates
   const [viewTemplates, setViewTemplates] = useState<ViewTemplate[]>([]);
@@ -1063,6 +1118,32 @@ function Home() {
         onDeleteViewTemplate={(id) =>
           setViewTemplates((prev) => prev.filter((t) => t.id !== id))
         }
+        onOpenSheetComposer={() => setSheetComposerOpen(true)}
+        onOpenKeynoteLegend={() => setKeynoteLegendOpen(true)}
+        designOptions={designOptions}
+        onDesignOptionChange={setDesignOptions}
+        constraints={constraints}
+        onConstraintsChange={setConstraints}
+        worksets={worksets}
+        onWorksetsChange={setWorksets}
+        onGenerateTerrain={() => {
+          // Generate a sample terrain grid
+          const points = [];
+          for (let x = -20; x <= 20; x += 2) {
+            for (let z = -20; z <= 20; z += 2) {
+              const elevation =
+                Math.sin(x * 0.2) * Math.cos(z * 0.3) * 1.5 +
+                Math.sin(x * 0.1 + z * 0.1) * 0.8;
+              points.push({ x, z, elevation: Math.max(elevation, -0.5) });
+            }
+          }
+          setTopography({
+            id: crypto.randomUUID(),
+            name: "Site Terrain",
+            points,
+            gridSize: 2,
+          });
+        }}
         unitSystem={unitSystem}
       />
 
@@ -1156,6 +1237,7 @@ function Home() {
                   viewFilterColorBy={viewFilterColorBy}
                   detailLevel={detailLevel}
                   sunHour={sunHour}
+                  topography={topography}
                   levels={levels}
                   unitSystem={unitSystem}
                 />
@@ -1328,6 +1410,69 @@ function Home() {
           bimElements={bimElements}
           onClose={() => setScheduleType(null)}
           onBimElementUpdate={handleBimElementUpdate}
+        />
+      )}
+      {keynoteLegendOpen && (
+        <KeynoteLegend
+          keynotes={[
+            {
+              id: "k1",
+              key: "01.A",
+              text: "Concrete masonry unit",
+              category: "Materials",
+            },
+            {
+              id: "k2",
+              key: "01.B",
+              text: "Cast-in-place concrete",
+              category: "Materials",
+            },
+            {
+              id: "k3",
+              key: "02.A",
+              text: "Structural steel beam",
+              category: "Structural",
+            },
+            {
+              id: "k4",
+              key: "02.B",
+              text: "Steel column",
+              category: "Structural",
+            },
+            {
+              id: "k5",
+              key: "03.A",
+              text: "Gypsum wallboard",
+              category: "Finishes",
+            },
+            {
+              id: "k6",
+              key: "03.B",
+              text: "Ceramic tile",
+              category: "Finishes",
+            },
+            {
+              id: "k7",
+              key: "04.A",
+              text: "Hollow metal door frame",
+              category: "Openings",
+            },
+            {
+              id: "k8",
+              key: "04.B",
+              text: "Aluminum window frame",
+              category: "Openings",
+            },
+          ]}
+          onClose={() => setKeynoteLegendOpen(false)}
+        />
+      )}
+      {sheetComposerOpen && (
+        <SheetComposer
+          sheets={sheets}
+          onSheetsChange={setSheets}
+          savedViews={savedViews}
+          onClose={() => setSheetComposerOpen(false)}
         />
       )}
     </div>

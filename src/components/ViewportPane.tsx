@@ -14,6 +14,7 @@ import type {
   SelectedElement,
   SpatialNode,
   SpotElevation,
+  Topography,
   UnitSystem,
   Viewer3DHandle,
   ViewFilterColorBy,
@@ -67,6 +68,7 @@ interface ViewportPaneProps {
   viewFilterColorBy?: ViewFilterColorBy;
   detailLevel?: DetailLevel;
   sunHour?: number | null;
+  topography?: Topography | null;
   levels?: Level[];
   unitSystem?: UnitSystem;
 }
@@ -193,6 +195,7 @@ export default function ViewportPane({
   viewFilterColorBy,
   detailLevel,
   sunHour,
+  topography,
   levels,
   unitSystem,
 }: ViewportPaneProps) {
@@ -272,6 +275,7 @@ export default function ViewportPane({
             viewFilterColorBy={viewFilterColorBy}
             detailLevel={detailLevel}
             sunHour={sunHour}
+            topography={topography}
             levels={levels}
             unitSystem={unitSystem}
           />
