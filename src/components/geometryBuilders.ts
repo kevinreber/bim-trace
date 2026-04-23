@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import type {
+  BimConstraint,
   BimElement,
   BimElementType,
   BimMaterialType,
   DetailLevel,
+  Topography,
 } from "@/types";
 import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
 
@@ -1387,6 +1389,177 @@ export function buildFittingMesh(
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(conn.point.x, conn.point.y, conn.point.z);
   return mesh;
+}
+
+// ── Topography mesh builder ───────────────────────────────────
+
+const TERRAIN_MAT = new THREE.MeshStandardMaterial({
+  color: 0x6b8e4e,
+  roughness: 0.95,
+  metalness: 0,
+  side: THREE.DoubleSide,
+  flatShading: true,
+});
+
+/**
+ * Build a terrain mesh from topography elevation points.
+ * Creates a grid-based heightfield using PlaneGeometry.
+ */
+export function buildTerrainMesh(topo: Topography): THREE.Mesh {
+  if (topo.points.length < 4) return new THREE.Mesh();
+
+  // Find bounds
+  let minX = Infinity,
+    maxX = -Infinity;
+  let minZ = Infinity,
+    maxZ = -Infinity;
+  for (const pt of topo.points) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.z < minZ) minZ = pt.z;
+    if (pt.z > maxZ) maxZ = pt.z;
+  }
+
+  const width = maxX - minX;
+  const depth = maxZ - minZ;
+  const segsX = Math.max(2, Math.round(width / topo.gridSize));
+  const segsZ = Math.max(2, Math.round(depth / topo.gridSize));
+
+  const geo = new THREE.PlaneGeometry(width, depth, segsX, segsZ);
+  geo.rotateX(-Math.PI / 2);
+
+  // Build a lookup for elevation at each grid point
+  const posAttr = geo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const gx = posAttr.getX(i) + width / 2 + minX;
+    const gz = posAttr.getZ(i) + depth / 2 + minZ;
+
+    // Find nearest elevation point
+    let nearest = topo.points[0];
+    let nearDist = Infinity;
+    for (const pt of topo.points) {
+      const d = (pt.x - gx) ** 2 + (pt.z - gz) ** 2;
+      if (d < nearDist) {
+        nearDist = d;
+        nearest = pt;
+      }
+    }
+    posAttr.setY(i, nearest.elevation);
+  }
+
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, TERRAIN_MAT);
+  mesh.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+  mesh.receiveShadow = true;
+  mesh.userData._terrain = true;
+  return mesh;
+}
+
+// ── Parametric constraint solver ──────────────────────────────
+
+/**
+ * Apply parametric constraints to adjust element positions.
+ * Returns a map of element ID → position adjustments.
+ * This is a simple iterative solver — runs a few passes to converge.
+ */
+export function solveConstraints(
+  elements: BimElement[],
+  constraints: BimConstraint[],
+): Map<string, { dx: number; dz: number }> {
+  const adjustments = new Map<string, { dx: number; dz: number }>();
+  for (const el of elements) {
+    adjustments.set(el.id, { dx: 0, dz: 0 });
+  }
+
+  if (constraints.length === 0) return adjustments;
+
+  const elMap = new Map(elements.map((el) => [el.id, el]));
+
+  // 3 iterations to converge
+  for (let iter = 0; iter < 3; iter++) {
+    for (const c of constraints) {
+      if (c.type === "distance" && c.elementIds.length === 2 && c.value) {
+        const a = elMap.get(c.elementIds[0]);
+        const b = elMap.get(c.elementIds[1]);
+        if (!a || !b) continue;
+        if (a.pinned && b.pinned) continue;
+
+        const adjA = adjustments.get(a.id)!;
+        const adjB = adjustments.get(b.id)!;
+        const ax = (a.start.x + a.end.x) / 2 + adjA.dx;
+        const az = (a.start.z + a.end.z) / 2 + adjA.dz;
+        const bx = (b.start.x + b.end.x) / 2 + adjB.dx;
+        const bz = (b.start.z + b.end.z) / 2 + adjB.dz;
+        const dx = bx - ax;
+        const dz = bz - az;
+        const currentDist = Math.sqrt(dx * dx + dz * dz);
+        if (currentDist < 0.001) continue;
+        const error = currentDist - c.value;
+        const correction = error / 2;
+        const nx = dx / currentDist;
+        const nz = dz / currentDist;
+
+        if (!a.pinned) {
+          adjA.dx += nx * correction;
+          adjA.dz += nz * correction;
+        }
+        if (!b.pinned) {
+          adjB.dx -= nx * correction;
+          adjB.dz -= nz * correction;
+        }
+      } else if (c.type === "alignment" && c.axis && c.elementIds.length >= 2) {
+        // Align all elements to the average position on the given axis
+        const els = c.elementIds
+          .map((id) => elMap.get(id))
+          .filter(Boolean) as BimElement[];
+        if (els.length < 2) continue;
+
+        const avg =
+          c.axis === "x"
+            ? els.reduce((s, el) => s + (el.start.x + el.end.x) / 2, 0) /
+              els.length
+            : els.reduce((s, el) => s + (el.start.z + el.end.z) / 2, 0) /
+              els.length;
+
+        for (const el of els) {
+          if (el.pinned) continue;
+          const adj = adjustments.get(el.id)!;
+          const center =
+            c.axis === "x"
+              ? (el.start.x + el.end.x) / 2 + adj.dx
+              : (el.start.z + el.end.z) / 2 + adj.dz;
+          const delta = avg - center;
+          if (c.axis === "x") adj.dx += delta;
+          else adj.dz += delta;
+        }
+      } else if (c.type === "equality" && c.elementIds.length >= 3) {
+        // Distribute elements evenly between first and last
+        const els = c.elementIds
+          .map((id) => elMap.get(id))
+          .filter(Boolean) as BimElement[];
+        if (els.length < 3) continue;
+        const sorted = [...els].sort(
+          (a2, b2) => (a2.start.x + a2.end.x) / 2 - (b2.start.x + b2.end.x) / 2,
+        );
+        const first = (sorted[0].start.x + sorted[0].end.x) / 2;
+        const last =
+          (sorted[sorted.length - 1].start.x +
+            sorted[sorted.length - 1].end.x) /
+          2;
+        const step = (last - first) / (sorted.length - 1);
+        for (let i = 1; i < sorted.length - 1; i++) {
+          const el = sorted[i];
+          if (el.pinned) continue;
+          const adj = adjustments.get(el.id)!;
+          const cx = (el.start.x + el.end.x) / 2 + adj.dx;
+          const target = first + step * i;
+          adj.dx += target - cx;
+        }
+      }
+    }
+  }
+
+  return adjustments;
 }
 
 // ── Wall openings ─────────────────────────────────────────────

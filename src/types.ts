@@ -49,7 +49,62 @@ export type AnnotationTool =
   | "circle"
   | "polyline"
   | "highlight"
-  | "measurement";
+  | "measurement"
+  | "keynote"
+  | "detailLine"
+  | "filledRegion";
+
+// ── Keynotes ───────────────────────────────────────────────
+
+export interface Keynote {
+  id: string;
+  key: string; // e.g., "01.A"
+  text: string; // e.g., "Concrete masonry unit"
+  category: string; // e.g., "Materials"
+}
+
+export const DEFAULT_KEYNOTES: Keynote[] = [
+  {
+    id: "k1",
+    key: "01.A",
+    text: "Concrete masonry unit",
+    category: "Materials",
+  },
+  {
+    id: "k2",
+    key: "01.B",
+    text: "Cast-in-place concrete",
+    category: "Materials",
+  },
+  {
+    id: "k3",
+    key: "02.A",
+    text: "Structural steel beam",
+    category: "Structural",
+  },
+  { id: "k4", key: "02.B", text: "Steel column", category: "Structural" },
+  { id: "k5", key: "03.A", text: "Gypsum wallboard", category: "Finishes" },
+  { id: "k6", key: "03.B", text: "Ceramic tile", category: "Finishes" },
+  {
+    id: "k7",
+    key: "04.A",
+    text: "Hollow metal door frame",
+    category: "Openings",
+  },
+  {
+    id: "k8",
+    key: "04.B",
+    text: "Aluminum window frame",
+    category: "Openings",
+  },
+  { id: "k9", key: "05.A", text: "Built-up roofing", category: "Roofing" },
+  {
+    id: "k10",
+    key: "05.B",
+    text: "Standing seam metal roof",
+    category: "Roofing",
+  },
+];
 
 /** Handle exposed by Viewer3D via forwardRef for programmatic camera control */
 export interface Viewer3DHandle {
@@ -450,6 +505,73 @@ export const VIEW_FILTER_COLORS: Record<string, number> = {
   temporary: 0xfbbf24,
   // Level colors (generated dynamically)
 };
+
+// ── Sheet Composition ──────────────────────────────────────
+
+export interface SheetViewport {
+  id: string;
+  viewName: string;
+  x: number; // position on sheet (mm)
+  y: number;
+  width: number;
+  height: number;
+  scale: string; // e.g., "1:100"
+}
+
+export interface Sheet {
+  id: string;
+  number: string; // e.g., "A101"
+  name: string;
+  titleBlock: "standard" | "minimal";
+  viewports: SheetViewport[];
+}
+
+// ── Design Options ─────────────────────────────────────────
+
+export interface DesignOption {
+  id: string;
+  name: string;
+  description: string;
+  elementIds: string[];
+  active: boolean;
+}
+
+// ── Topography ─────────────────────────────────────────────
+
+export interface TerrainPoint {
+  x: number;
+  z: number;
+  elevation: number;
+}
+
+export interface Topography {
+  id: string;
+  name: string;
+  points: TerrainPoint[];
+  gridSize: number; // spacing between points
+}
+
+// ── Worksharing / Worksets ─────────────────────────────────
+
+export interface Workset {
+  id: string;
+  name: string;
+  owner: string; // user who owns this workset
+  editable: boolean; // whether current user can edit
+  elementIds: string[];
+}
+
+// ── Parametric Constraints ─────────────────────────────────
+
+export type ConstraintType = "distance" | "alignment" | "equality";
+
+export interface BimConstraint {
+  id: string;
+  type: ConstraintType;
+  elementIds: string[]; // elements involved
+  axis?: "x" | "z"; // for alignment constraints
+  value?: number; // for distance constraints (target distance)
+}
 
 // ── Schedule View ───────────────────────────────────────────
 
