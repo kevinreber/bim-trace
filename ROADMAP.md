@@ -204,7 +204,7 @@
 - [ ] **Section box** — define a 3D bounding box to isolate a region
 
 ### Model Intelligence
-- [ ] **Clash detection** — highlight overlapping elements
+- [x] **Clash detection** — highlight overlapping elements
 - [ ] **Distance measurement** — measure between two 3D points
 - [ ] **Volume calculation** — calculate volume of selected elements
 - [ ] **Surface area** — calculate area of selected faces
@@ -539,6 +539,118 @@
 - [ ] **Satellite imagery** — drape aerial photo on terrain mesh
 - [ ] **3D city context** — load OpenStreetMap 3D buildings around site
 - [ ] **Tree survey** — import/place existing trees with canopy radius
+
+---
+
+## Revit Parity — Core Modeling & Editing
+
+### Wall System
+- [x] **Wall joins & auto-cleanup** — auto-join intersecting walls (T-joints, L-joints, corner cleanup)
+- [x] **Trim / Extend walls** — trim wall to another wall or extend to meet
+- [x] **Split wall** — split a wall at a clicked point into two segments
+
+### Precision Editing
+- [x] **Free-form move with numeric input** — drag elements or type exact distance
+- [x] **Rotate with angle input** — free rotation or type exact angle (not just ±45°)
+- [x] **Array tool (linear & radial)** — repeat elements in a line or around a center
+- [x] **Align tool** — snap-align edges of selected elements
+- [x] **Distribute tool** — evenly space selected elements
+- [x] **Offset tool** — create parallel copy at a specified distance
+- [x] **Pin / Unpin elements** — lock elements in place to prevent accidental edits
+- [x] **Copy to clipboard / Paste** — cross-view clipboard with paste at picked point
+
+### Parametric Constraints
+- [ ] **Dimensional constraints** — lock distances between elements
+- [ ] **Equality constraints** — "make these equal" for spacing
+- [ ] **Alignment constraints** — snap-lock to grid/level/other elements
+- [ ] **Host relationships** — railings hosted on stairs, fixtures hosted on walls
+
+---
+
+## Revit Parity — Annotation & Documentation
+
+### Dimensioning
+- [x] **Linear / Aligned dimension strings** — click-to-place dimension strings in views
+- [ ] **Angular dimensions** — measure and display angles between elements
+- [x] **Spot elevations** — click a point, show its elevation value
+
+### Tags & Labels
+- [x] **Door tags** — auto-labels reading door type mark and instance number
+- [x] **Window tags** — auto-labels reading window type and size
+- [x] **Room tags** — auto-labels reading room name and computed area
+- [ ] **Generic tags** — configurable auto-labels for any element category
+- [ ] **Keynotes & legends** — standardized annotation with legend tables
+
+### Detail & Drafting
+- [ ] **Detail lines & filled regions** — 2D-only drafting geometry in views
+- [ ] **Detail components** — reusable 2D detail symbols
+
+### Sheet Composition
+- [ ] **Title block templates** — customizable title blocks with project info fields
+- [ ] **Place views on sheets** — drag views onto sheets at selectable scales
+- [ ] **Revision clouds with revision tracking** — tracked rev history on sheets
+- [ ] **Sheet numbering & organization** — A101, A201, S101 sheet set management
+
+---
+
+## Revit Parity — Views & Graphics
+
+### View Controls
+- [x] **Section box / crop region** — clip the 3D view to a defined region
+- [x] **View filters** — color/hide elements by parameter-based rules
+- [x] **Detail level (coarse/medium/fine)** — different geometry detail per zoom
+- [x] **View templates** — save & apply graphic settings across views
+- [ ] **Dependent views** — linked sub-views of a parent view
+
+### Visualization
+- [x] **Sun / shadow study** — time-of-day shadow simulation with date slider
+- [ ] **Walkthroughs** — animated camera paths through the model
+- [ ] **Rendering / ray-traced output** — photorealistic image export
+
+### Phasing
+- [x] **Phase filters** — existing vs. new vs. demolished element display
+- [x] **Phase assignment** — assign elements to construction phases
+- [x] **Phase graphic overrides** — different line styles per phase status
+
+---
+
+## Revit Parity — MEP Connectivity
+
+- [x] **MEP connectivity / routing** — ducts & pipes connect end-to-end
+- [x] **Fittings (elbows, tees, reducers)** — auto-placed at duct/pipe connections
+- [ ] **Systems (supply/return/exhaust)** — logical grouping of connected MEP elements
+- [ ] **Electrical circuits & panel schedules** — circuit assignment, load calculations
+- [ ] **Auto-routing** — automatic duct/pipe path finding between equipment
+
+---
+
+## Revit Parity — Scheduling & Data
+
+- [x] **Editable schedules** — edit element parameters directly in the schedule grid
+- [ ] **Calculated fields** — custom formulas in schedule columns
+- [x] **Schedule filtering & sorting** — group by level, sort by type, filter by param
+- [ ] **Material takeoff** — quantities broken down by material, not just element
+- [ ] **Multi-category schedules** — schedules spanning multiple element types
+- [ ] **Key schedules** — lookup tables for type parameter assignments
+
+---
+
+## Revit Parity — Collaboration & Worksharing
+
+- [ ] **Central model + local copies** — multi-user editing with sync
+- [ ] **Worksets** — partition model into ownership groups
+- [ ] **Synchronize with central** — push/pull changes to shared model
+- [ ] **Design options** — A/B design alternatives within one project
+- [ ] **Linked models** — reference external project files in the scene
+- [x] **Clash detection** — flag colliding elements across disciplines
+
+---
+
+## Revit Parity — Project Management
+
+- [x] **Room/area auto-computation** — detect enclosed wall loops, compute room areas
+- [ ] **Topography / site tools** — terrain mesh modeling
+- [ ] **Stair by sketch** — draw stair path, auto-generate geometry from sketch
 
 ---
 

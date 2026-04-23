@@ -4,15 +4,19 @@ import type {
   BimElement,
   CategoryVisibility,
   CreationTool,
+  DetailLevel,
   Dimension3D,
   GridLine,
   GridSize,
   Level,
   Markup,
+  SectionBox,
   SelectedElement,
   SpatialNode,
+  SpotElevation,
   UnitSystem,
   Viewer3DHandle,
+  ViewFilterColorBy,
   ViewPane,
   ViewPaneType,
   WallAlignMode,
@@ -55,7 +59,14 @@ interface ViewportPaneProps {
   categoryVisibility?: Record<string, CategoryVisibility>;
   dimensions3D?: Dimension3D[];
   onDimension3DCreated?: (dim: Dimension3D) => void;
+  spotElevations?: SpotElevation[];
+  onSpotElevationCreated?: (se: SpotElevation) => void;
   onContextMenu?: (e: React.MouseEvent, elementId: string | null) => void;
+  onBimElementUpdate?: (id: string, updates: Partial<BimElement>) => void;
+  sectionBox?: SectionBox;
+  viewFilterColorBy?: ViewFilterColorBy;
+  detailLevel?: DetailLevel;
+  sunHour?: number | null;
   levels?: Level[];
   unitSystem?: UnitSystem;
 }
@@ -174,7 +185,14 @@ export default function ViewportPane({
   categoryVisibility,
   dimensions3D,
   onDimension3DCreated,
+  spotElevations,
+  onSpotElevationCreated,
   onContextMenu,
+  onBimElementUpdate,
+  sectionBox,
+  viewFilterColorBy,
+  detailLevel,
+  sunHour,
   levels,
   unitSystem,
 }: ViewportPaneProps) {
@@ -246,7 +264,14 @@ export default function ViewportPane({
             categoryVisibility={categoryVisibility}
             dimensions3D={dimensions3D}
             onDimension3DCreated={onDimension3DCreated}
+            spotElevations={spotElevations}
+            onSpotElevationCreated={onSpotElevationCreated}
             onContextMenu={onContextMenu}
+            onBimElementUpdate={onBimElementUpdate}
+            sectionBox={sectionBox}
+            viewFilterColorBy={viewFilterColorBy}
+            detailLevel={detailLevel}
+            sunHour={sunHour}
             levels={levels}
             unitSystem={unitSystem}
           />

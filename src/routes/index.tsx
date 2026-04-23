@@ -19,6 +19,7 @@ import type {
   BimElement,
   CategoryVisibility,
   CreationTool,
+  DetailLevel,
   Dimension3D,
   ElementGroup,
   GridLine,
@@ -27,14 +28,18 @@ import type {
   Markup,
   SavedView,
   ScheduleType,
+  SectionBox,
   SelectedElement,
   SpatialNode,
+  SpotElevation,
   UndoAction,
   UnitSystem,
   Viewer3DHandle,
+  ViewFilterColorBy,
   ViewLayout,
   ViewPane,
   ViewPaneType,
+  ViewTemplate,
   WallAlignMode,
 } from "@/types";
 import {
@@ -106,6 +111,35 @@ function Home() {
   const [categoryVisibility, setCategoryVisibility] = useState<
     Record<string, CategoryVisibility>
   >({});
+
+  // Section box
+  const [sectionBox, setSectionBox] = useState<SectionBox>({
+    enabled: false,
+    min: { x: -20, y: -1, z: -20 },
+    max: { x: 20, y: 15, z: 20 },
+  });
+
+  // View filter
+  const [viewFilterColorBy, setViewFilterColorBy] =
+    useState<ViewFilterColorBy>("none");
+
+  // Detail level
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
+
+  // Sun/shadow study
+  const [sunHour, setSunHour] = useState<number | null>(null);
+
+  // View templates
+  const [viewTemplates, setViewTemplates] = useState<ViewTemplate[]>([]);
+
+  // Spot elevations
+  const [spotElevations, setSpotElevations] = useState<SpotElevation[]>([]);
+  const handleSpotElevationCreated = useCallback((se: SpotElevation) => {
+    setSpotElevations((prev) => [...prev, se]);
+  }, []);
+
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<BimElement[]>([]);
 
   // Saved views
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -777,7 +811,39 @@ function Home() {
         return;
       }
 
-      // Delete selected element(s)
+      // Copy selected elements (Ctrl+C)
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        if (selectedElementIds.length > 0) {
+          clipboardRef.current = bimElements.filter((el) =>
+            selectedElementIds.includes(el.id),
+          );
+          showToast(`Copied ${clipboardRef.current.length} element(s)`, "info");
+        }
+        return;
+      }
+
+      // Paste elements (Ctrl+V)
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        if (clipboardRef.current.length > 0) {
+          const offset = 1; // 1m offset
+          for (const el of clipboardRef.current) {
+            const newEl: BimElement = {
+              ...el,
+              id: crypto.randomUUID(),
+              name: `${el.name} (paste)`,
+              start: { x: el.start.x + offset, z: el.start.z + offset },
+              end: { x: el.end.x + offset, z: el.end.z + offset },
+              params: { ...el.params },
+              pinned: false,
+            };
+            handleElementCreated(newEl);
+          }
+          showToast(`Pasted ${clipboardRef.current.length} element(s)`, "info");
+        }
+        return;
+      }
+
+      // Delete selected element(s) — skip pinned elements
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedElementIds.length > 1) {
           e.preventDefault();
@@ -786,7 +852,7 @@ function Home() {
           const bimEl = bimElements.find(
             (el) => el.id === selectedElement.globalId,
           );
-          if (bimEl) {
+          if (bimEl && !bimEl.pinned) {
             e.preventDefault();
             handleBimElementDelete(bimEl.id);
           }
@@ -794,7 +860,7 @@ function Home() {
         return;
       }
 
-      // Arrow keys to move selected element(s)
+      // Arrow keys to move selected element(s) — skip pinned elements
       if (selectedElementIds.length > 0 && !e.shiftKey) {
         if (
           e.key === "ArrowLeft" ||
@@ -810,7 +876,7 @@ function Home() {
           e.preventDefault();
           for (const id of selectedElementIds) {
             const bimEl = bimElements.find((el) => el.id === id);
-            if (bimEl) {
+            if (bimEl && !bimEl.pinned) {
               handleBimElementUpdate(bimEl.id, {
                 start: { x: bimEl.start.x + dx, z: bimEl.start.z + dz },
                 end: { x: bimEl.end.x + dx, z: bimEl.end.z + dz },
@@ -968,6 +1034,35 @@ function Home() {
         onZoomIn={() => viewer3DRef.current?.zoomIn()}
         onZoomOut={() => viewer3DRef.current?.zoomOut()}
         onZoomToFit={() => viewer3DRef.current?.zoomToFit()}
+        sectionBox={sectionBox}
+        onSectionBoxChange={setSectionBox}
+        viewFilterColorBy={viewFilterColorBy}
+        onViewFilterChange={setViewFilterColorBy}
+        detailLevel={detailLevel}
+        onDetailLevelChange={setDetailLevel}
+        sunHour={sunHour}
+        onSunHourChange={setSunHour}
+        viewTemplates={viewTemplates}
+        onSaveViewTemplate={() => {
+          const name = prompt("Template name:");
+          if (!name) return;
+          const template: ViewTemplate = {
+            id: crypto.randomUUID(),
+            name,
+            detailLevel,
+            colorBy: viewFilterColorBy,
+            categoryVisibility: { ...categoryVisibility },
+          };
+          setViewTemplates((prev) => [...prev, template]);
+        }}
+        onLoadViewTemplate={(t) => {
+          setDetailLevel(t.detailLevel);
+          setViewFilterColorBy(t.colorBy);
+          setCategoryVisibility(t.categoryVisibility);
+        }}
+        onDeleteViewTemplate={(id) =>
+          setViewTemplates((prev) => prev.filter((t) => t.id !== id))
+        }
         unitSystem={unitSystem}
       />
 
@@ -1053,7 +1148,14 @@ function Home() {
                   categoryVisibility={categoryVisibility}
                   dimensions3D={dimensions3D}
                   onDimension3DCreated={handleDimension3DCreated}
+                  spotElevations={spotElevations}
+                  onSpotElevationCreated={handleSpotElevationCreated}
                   onContextMenu={handleContextMenu}
+                  onBimElementUpdate={handleBimElementUpdate}
+                  sectionBox={sectionBox}
+                  viewFilterColorBy={viewFilterColorBy}
+                  detailLevel={detailLevel}
+                  sunHour={sunHour}
                   levels={levels}
                   unitSystem={unitSystem}
                 />
@@ -1225,6 +1327,7 @@ function Home() {
           type={scheduleType}
           bimElements={bimElements}
           onClose={() => setScheduleType(null)}
+          onBimElementUpdate={handleBimElementUpdate}
         />
       )}
     </div>
