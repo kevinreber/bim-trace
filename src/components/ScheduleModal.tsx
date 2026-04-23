@@ -1,9 +1,11 @@
+import { useState } from "react";
 import type { BimElement, BimElementType, ScheduleType } from "@/types";
 
 interface ScheduleModalProps {
   type: ScheduleType;
   bimElements: BimElement[];
   onClose: () => void;
+  onBimElementUpdate?: (id: string, updates: Partial<BimElement>) => void;
 }
 
 const TYPE_LABELS: Record<BimElementType, string> = {
@@ -50,26 +52,97 @@ function computeArea(el: BimElement): string {
   ).toFixed(2);
 }
 
+/** Editable cell for schedule grid — click to edit, blur/Enter to save */
+function EditableCell({
+  value,
+  onSave,
+  editable = true,
+}: {
+  value: string;
+  onSave?: (val: string) => void;
+  editable?: boolean;
+}) {
+  if (!editable || !onSave) {
+    return <td>{value}</td>;
+  }
+  return (
+    <td
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(e) => {
+        const newVal = e.currentTarget.textContent?.trim() ?? "";
+        if (newVal !== value) onSave(newVal);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLElement).blur();
+        }
+      }}
+      style={{ cursor: "text" }}
+    >
+      {value}
+    </td>
+  );
+}
+
+/** Which column keys represent editable param fields */
+const EDITABLE_PARAM_KEYS = new Set([
+  "name",
+  "width",
+  "height",
+  "thickness",
+  "radius",
+  "depth",
+  "sillHeight",
+  "riserHeight",
+  "treadDepth",
+  "numRisers",
+  "panelWidth",
+  "panelHeight",
+  "mullionSize",
+  "overhang",
+  "postSpacing",
+  "diameter",
+]);
+
 export default function ScheduleModal({
   type,
   bimElements,
   onClose,
+  onBimElementUpdate,
 }: ScheduleModalProps) {
-  const filtered =
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortAsc, setSortAsc] = useState(true);
+  const [filterLevel, setFilterLevel] = useState<string>("all");
+
+  let filtered =
     type === "all" ? bimElements : bimElements.filter((el) => el.type === type);
+
+  // Filter by level
+  if (filterLevel !== "all") {
+    const levelNum = Number.parseFloat(filterLevel);
+    filtered = filtered.filter((el) => el.level === levelNum);
+  }
 
   const title =
     type === "all"
       ? "All Elements Schedule"
       : `${TYPE_LABELS[type as BimElementType] ?? type} Schedule`;
 
+  // Get unique levels for filter dropdown
+  const uniqueLevels = Array.from(new Set(filtered.map((el) => el.level))).sort(
+    (a, b) => a - b,
+  );
+
   // Build columns based on schedule type
   const columns: {
     key: string;
     label: string;
     getValue: (el: BimElement) => string;
+    editable?: boolean;
   }[] = [
-    { key: "name", label: "Name", getValue: (el) => el.name },
+    { key: "name", label: "Name", getValue: (el) => el.name, editable: true },
     {
       key: "type",
       label: "Type",
@@ -84,11 +157,13 @@ export default function ScheduleModal({
         key: "width",
         label: "Width (m)",
         getValue: (el) => getParamValue(el, "width"),
+        editable: true,
       },
       {
         key: "height",
         label: "Height (m)",
         getValue: (el) => getParamValue(el, "height"),
+        editable: true,
       },
     );
     if (type === "window") {
@@ -96,6 +171,7 @@ export default function ScheduleModal({
         key: "sillHeight",
         label: "Sill Height (m)",
         getValue: (el) => getParamValue(el, "sillHeight"),
+        editable: true,
       });
     }
     columns.push({
@@ -119,6 +195,7 @@ export default function ScheduleModal({
         key: "height",
         label: "Height (m)",
         getValue: (el) => getParamValue(el, "height"),
+        editable: true,
       },
     );
   } else if (type === "wall") {
@@ -128,11 +205,13 @@ export default function ScheduleModal({
         key: "height",
         label: "Height (m)",
         getValue: (el) => getParamValue(el, "height"),
+        editable: true,
       },
       {
         key: "thickness",
         label: "Thickness (m)",
         getValue: (el) => getParamValue(el, "thickness"),
+        editable: true,
       },
     );
   } else {
@@ -148,12 +227,55 @@ export default function ScheduleModal({
         key: k,
         label: k.replace(/([A-Z])/g, " $1").trim(),
         getValue: (el) => getParamValue(el, k),
+        editable: EDITABLE_PARAM_KEYS.has(k),
       });
     }
   }
 
-  // Summary row
-  const totalCount = filtered.length;
+  const handleCellSave = (el: BimElement, key: string, newVal: string) => {
+    if (!onBimElementUpdate) return;
+    if (key === "name") {
+      onBimElementUpdate(el.id, { name: newVal });
+      return;
+    }
+    // Try to update as a numeric param
+    const num = Number.parseFloat(newVal);
+    if (Number.isNaN(num) || num <= 0) return;
+    const currentParams = { ...(el.params as Record<string, unknown>) };
+    currentParams[key] = num;
+    onBimElementUpdate(el.id, {
+      params: currentParams as BimElement["params"],
+    });
+  };
+
+  // Sort
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  };
+
+  const sorted = [...filtered];
+  if (sortKey) {
+    const col = columns.find((c) => c.key === sortKey);
+    if (col) {
+      sorted.sort((a, b) => {
+        const va = col.getValue(a);
+        const vb = col.getValue(b);
+        const na = Number.parseFloat(va);
+        const nb = Number.parseFloat(vb);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+          return sortAsc ? na - nb : nb - na;
+        }
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+    }
+  }
+
+  const totalCount = sorted.length;
 
   return (
     <div className="schedule-overlay" onClick={onClose}>
@@ -161,22 +283,66 @@ export default function ScheduleModal({
         <div className="schedule-header">
           <span>
             {title} ({totalCount} items)
+            {onBimElementUpdate && (
+              <span
+                style={{
+                  fontSize: "10px",
+                  color: "var(--text-muted)",
+                  marginLeft: 8,
+                }}
+              >
+                Click cells to edit
+              </span>
+            )}
           </span>
-          <button type="button" onClick={onClose} className="ai-modal-close">
-            &times;
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select
+              value={filterLevel}
+              onChange={(e) => setFilterLevel(e.target.value)}
+              style={{
+                fontSize: "10px",
+                padding: "2px 4px",
+                background: "var(--revit-input-bg, #2a2a2a)",
+                color: "var(--revit-text, #ddd)",
+                border: "1px solid var(--revit-border, #444)",
+                borderRadius: "2px",
+              }}
+            >
+              <option value="all">All Levels</option>
+              {uniqueLevels.map((l) => (
+                <option key={l} value={l}>
+                  Level {l.toFixed(1)}m
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={onClose} className="ai-modal-close">
+              &times;
+            </button>
+          </div>
         </div>
         <table className="schedule-table">
           <thead>
             <tr>
               <th>#</th>
               {columns.map((col) => (
-                <th key={col.key}>{col.label}</th>
+                <th
+                  key={col.key}
+                  onClick={() => handleSort(col.key)}
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  title={`Sort by ${col.label}`}
+                >
+                  {col.label}
+                  {sortKey === col.key && (
+                    <span style={{ marginLeft: 4, fontSize: "8px" }}>
+                      {sortAsc ? "▲" : "▼"}
+                    </span>
+                  )}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <tr>
                 <td
                   colSpan={columns.length + 1}
@@ -190,11 +356,20 @@ export default function ScheduleModal({
                 </td>
               </tr>
             ) : (
-              filtered.map((el, idx) => (
+              sorted.map((el, idx) => (
                 <tr key={el.id}>
                   <td>{idx + 1}</td>
                   {columns.map((col) => (
-                    <td key={col.key}>{col.getValue(el)}</td>
+                    <EditableCell
+                      key={col.key}
+                      value={col.getValue(el)}
+                      editable={col.editable}
+                      onSave={
+                        onBimElementUpdate && col.editable
+                          ? (val) => handleCellSave(el, col.key, val)
+                          : undefined
+                      }
+                    />
                   ))}
                 </tr>
               ))
