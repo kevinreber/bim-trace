@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { BimElement, BimElementType, BimMaterialType } from "@/types";
+import type {
+  BimElement,
+  BimElementType,
+  BimMaterialType,
+  BimPhase,
+} from "@/types";
 import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -386,6 +391,39 @@ export default function ElementEditor({
                 >
                   {element.id.slice(0, 8)}...
                 </span>
+              </div>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">Phase</span>
+              <div className="prop-value">
+                <select
+                  value={element.phase ?? "new"}
+                  onChange={(e) =>
+                    onUpdate(element.id, {
+                      phase: e.target.value as BimPhase,
+                    })
+                  }
+                  className="prop-input"
+                  style={{ cursor: "pointer" }}
+                >
+                  <option value="existing">Existing</option>
+                  <option value="new">New Construction</option>
+                  <option value="demolished">Demolished</option>
+                  <option value="temporary">Temporary</option>
+                </select>
+              </div>
+            </div>
+            <div className="prop-row">
+              <span className="prop-label">Pinned</span>
+              <div className="prop-value">
+                <input
+                  type="checkbox"
+                  checked={element.pinned ?? false}
+                  onChange={(e) =>
+                    onUpdate(element.id, { pinned: e.target.checked })
+                  }
+                  style={{ cursor: "pointer" }}
+                />
               </div>
             </div>
           </>
