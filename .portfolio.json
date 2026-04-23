@@ -1,0 +1,9 @@
+{
+  "displayName": "BIM Trace",
+  "description": "Web-native BIM authoring and review platform. Combines 3D parametric modeling with 2D PDF annotation, tracing markups directly to 3D elements for unified construction coordination.",
+  "tech": ["React", "TypeScript", "Three.js", "IFC.js", "PDF.js", "Fabric.js", "Claude API"],
+  "thumbnail": "docs/images/thumbnail.png",
+  "demo": "docs/images/demo.gif",
+  "liveUrl": "https://bim-trace.vercel.app",
+  "order": 4
+}
