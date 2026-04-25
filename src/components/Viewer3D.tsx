@@ -23,6 +23,7 @@ import type {
   SelectedElement,
   SpatialNode,
   SpotElevation,
+  Topography,
   UnitSystem,
   Viewer3DHandle,
   ViewFilterColorBy,
@@ -50,6 +51,7 @@ import {
   buildSlabMesh,
   buildStairMesh,
   buildTableMesh,
+  buildTerrainMesh,
   buildToiletMesh,
   buildWallMesh,
   buildWindowMesh,
@@ -94,6 +96,7 @@ interface Viewer3DProps {
   detailLevel?: DetailLevel;
   /** Sun hour (0-24) for shadow study. null = shadows disabled. */
   sunHour?: number | null;
+  topography?: Topography | null;
   levels?: Level[];
   unitSystem?: UnitSystem;
 }
@@ -217,6 +220,7 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
     viewFilterColorBy = "none",
     detailLevel = "medium",
     sunHour = null,
+    topography = null,
     levels = [],
     unitSystem = "metric",
   },
@@ -1850,6 +1854,29 @@ const Viewer3D = forwardRef<Viewer3DHandle, Viewer3DProps>(function Viewer3D(
       }
     }
   }, [sunHour, bimElements]);
+
+  // ── Topography rendering ────────────────────────────────────
+
+  const terrainMeshRef = useRef<THREE.Mesh | null>(null);
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world?.scene?.three) return;
+    const scene = world.scene.three;
+
+    // Remove existing terrain
+    if (terrainMeshRef.current) {
+      scene.remove(terrainMeshRef.current);
+      terrainMeshRef.current.geometry.dispose();
+      terrainMeshRef.current = null;
+    }
+
+    if (topography) {
+      const mesh = buildTerrainMesh(topography);
+      scene.add(mesh);
+      terrainMeshRef.current = mesh;
+    }
+  }, [topography]);
 
   // ── 2D CAD rendering for orthographic views ────────────────
   // In ortho views (plan, elevation, section), render elements as clean

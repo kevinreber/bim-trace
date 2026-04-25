@@ -560,9 +560,9 @@
 - [x] **Copy to clipboard / Paste** — cross-view clipboard with paste at picked point
 
 ### Parametric Constraints
-- [ ] **Dimensional constraints** — lock distances between elements
-- [ ] **Equality constraints** — "make these equal" for spacing
-- [ ] **Alignment constraints** — snap-lock to grid/level/other elements
+- [x] **Dimensional constraints** — lock distances between elements
+- [x] **Equality constraints** — "make these equal" for spacing
+- [x] **Alignment constraints** — snap-lock to grid/level/other elements
 - [ ] **Host relationships** — railings hosted on stairs, fixtures hosted on walls
 
 ---
@@ -579,17 +579,17 @@
 - [x] **Window tags** — auto-labels reading window type and size
 - [x] **Room tags** — auto-labels reading room name and computed area
 - [ ] **Generic tags** — configurable auto-labels for any element category
-- [ ] **Keynotes & legends** — standardized annotation with legend tables
+- [x] **Keynotes & legends** — standardized annotation with legend tables
 
 ### Detail & Drafting
-- [ ] **Detail lines & filled regions** — 2D-only drafting geometry in views
+- [x] **Detail lines & filled regions** — 2D-only drafting geometry in views
 - [ ] **Detail components** — reusable 2D detail symbols
 
 ### Sheet Composition
-- [ ] **Title block templates** — customizable title blocks with project info fields
-- [ ] **Place views on sheets** — drag views onto sheets at selectable scales
+- [x] **Title block templates** — customizable title blocks with project info fields
+- [x] **Place views on sheets** — drag views onto sheets at selectable scales
 - [ ] **Revision clouds with revision tracking** — tracked rev history on sheets
-- [ ] **Sheet numbering & organization** — A101, A201, S101 sheet set management
+- [x] **Sheet numbering & organization** — A101, A201, S101 sheet set management
 
 ---
 
@@ -638,9 +638,9 @@
 ## Revit Parity — Collaboration & Worksharing
 
 - [ ] **Central model + local copies** — multi-user editing with sync
-- [ ] **Worksets** — partition model into ownership groups
+- [x] **Worksets** — partition model into ownership groups
 - [ ] **Synchronize with central** — push/pull changes to shared model
-- [ ] **Design options** — A/B design alternatives within one project
+- [x] **Design options** — A/B design alternatives within one project
 - [ ] **Linked models** — reference external project files in the scene
 - [x] **Clash detection** — flag colliding elements across disciplines
 
@@ -649,7 +649,7 @@
 ## Revit Parity — Project Management
 
 - [x] **Room/area auto-computation** — detect enclosed wall loops, compute room areas
-- [ ] **Topography / site tools** — terrain mesh modeling
+- [x] **Topography / site tools** — terrain mesh modeling
 - [ ] **Stair by sketch** — draw stair path, auto-generate geometry from sketch
 
 ---

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type {
   AnnotationTool,
+  BimConstraint,
   BimElement,
   BimElementType,
   CategoryVisibility,
   CreationTool,
+  DesignOption,
   DetailLevel,
   ElementGroup,
   GridSize,
@@ -19,6 +21,7 @@ import type {
   ViewPane,
   ViewPaneType,
   ViewTemplate,
+  Workset,
 } from "@/types";
 import { formatUnit } from "@/types";
 import { detectClashes } from "./geometryBuilders";
@@ -101,6 +104,21 @@ interface RibbonToolbarProps {
   onSaveViewTemplate?: () => void;
   onLoadViewTemplate?: (template: ViewTemplate) => void;
   onDeleteViewTemplate?: (id: string) => void;
+  // Sheet composition
+  onOpenSheetComposer?: () => void;
+  // Keynote legend
+  onOpenKeynoteLegend?: () => void;
+  // Design options
+  designOptions?: DesignOption[];
+  onDesignOptionChange?: (options: DesignOption[]) => void;
+  // Constraints
+  constraints?: BimConstraint[];
+  onConstraintsChange?: (constraints: BimConstraint[]) => void;
+  // Worksets
+  worksets?: Workset[];
+  onWorksetsChange?: (worksets: Workset[]) => void;
+  // Topography
+  onGenerateTerrain?: () => void;
   unitSystem: UnitSystem;
 }
 
@@ -207,6 +225,14 @@ const ANNOTATE_GROUPS: ToolGroupDef[] = [
     tools: [
       { id: "dimension3d", label: "3D Dim" },
       { id: "spotElevation", label: "Spot EL" },
+    ],
+  },
+  {
+    label: "Detail",
+    tools: [
+      { id: "keynote", label: "Keynote" },
+      { id: "detailLine", label: "Det. Line" },
+      { id: "filledRegion", label: "Fill Rgn" },
     ],
   },
 ];
@@ -714,6 +740,59 @@ function ToolIcon({ id }: { id: string }) {
         <polyline points="18,11 20,12 18,13" fill="currentColor" />
       </svg>
     ),
+    keynote: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <circle cx="8" cy="8" r="5" />
+        <text
+          x="8"
+          y="10"
+          textAnchor="middle"
+          fontSize="6"
+          fill="currentColor"
+          stroke="none"
+        >
+          K
+        </text>
+        <line x1="12" y1="12" x2="20" y2="20" />
+      </svg>
+    ),
+    detailLine: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <line x1="4" y1="20" x2="20" y2="4" strokeDasharray="4 2" />
+        <circle cx="4" cy="20" r="2" />
+        <circle cx="20" cy="4" r="2" />
+      </svg>
+    ),
+    filledRegion: (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <rect x="4" y="4" width="16" height="16" rx="1" />
+        <line x1="4" y1="8" x2="8" y2="4" />
+        <line x1="4" y1="12" x2="12" y2="4" />
+        <line x1="4" y1="16" x2="16" y2="4" />
+        <line x1="4" y1="20" x2="20" y2="4" />
+        <line x1="8" y1="20" x2="20" y2="8" />
+        <line x1="12" y1="20" x2="20" y2="12" />
+        <line x1="16" y1="20" x2="20" y2="16" />
+      </svg>
+    ),
   };
 
   return (
@@ -853,6 +932,15 @@ export default function RibbonToolbar({
   onDetailLevelChange,
   sunHour = null,
   onSunHourChange,
+  onOpenSheetComposer,
+  onOpenKeynoteLegend,
+  designOptions = [],
+  onDesignOptionChange,
+  constraints = [],
+  onConstraintsChange,
+  worksets = [],
+  onWorksetsChange,
+  onGenerateTerrain,
   viewTemplates = [],
   onSaveViewTemplate,
   onLoadViewTemplate,
@@ -1958,6 +2046,97 @@ export default function RibbonToolbar({
               <div className="ribbon-group-label">Align</div>
             </div>
 
+            {/* Constraints */}
+            {onConstraintsChange && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedElements.length !== 2) return;
+                      const a = selectedElements[0];
+                      const b = selectedElements[1];
+                      const dx =
+                        (a.start.x + a.end.x) / 2 - (b.start.x + b.end.x) / 2;
+                      const dz =
+                        (a.start.z + a.end.z) / 2 - (b.start.z + b.end.z) / 2;
+                      const dist = Math.sqrt(dx * dx + dz * dz);
+                      const c: BimConstraint = {
+                        id: crypto.randomUUID(),
+                        type: "distance",
+                        elementIds: [a.id, b.id],
+                        value: Math.round(dist * 100) / 100,
+                      };
+                      onConstraintsChange([...constraints, c]);
+                    }}
+                    className="ribbon-tool-btn"
+                    disabled={selectedElements.length !== 2}
+                    title="Lock distance between 2 selected elements"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <rect x="6" y="10" width="12" height="8" rx="1" />
+                      <path d="M8 10 V7 A4 4 0 0 1 16 7 V10" />
+                    </svg>
+                    <span className="ribbon-tool-label">Lock Dist</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedElements.length < 2) return;
+                      const c: BimConstraint = {
+                        id: crypto.randomUUID(),
+                        type: "alignment",
+                        elementIds: selectedElements.map((e) => e.id),
+                        axis: "x",
+                      };
+                      onConstraintsChange([...constraints, c]);
+                    }}
+                    className="ribbon-tool-btn"
+                    disabled={selectedElements.length < 2}
+                    title="Lock X-alignment of selected elements"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <line
+                        x1="12"
+                        y1="3"
+                        x2="12"
+                        y2="21"
+                        strokeDasharray="3 2"
+                      />
+                      <rect x="8" y="6" width="8" height="4" />
+                      <rect x="8" y="14" width="8" height="4" />
+                    </svg>
+                    <span className="ribbon-tool-label">Align X</span>
+                  </button>
+                  {constraints.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onConstraintsChange([])}
+                      className="ribbon-tool-btn"
+                      title="Clear all constraints"
+                    >
+                      <span className="ribbon-tool-label">
+                        Clear ({constraints.length})
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <div className="ribbon-group-label">Constraints</div>
+              </div>
+            )}
+
             {/* Group/Ungroup */}
             <div className="ribbon-group">
               <div className="ribbon-group-tools">
@@ -2931,6 +3110,35 @@ export default function RibbonToolbar({
               <div className="ribbon-group-label">Schedules</div>
             </div>
 
+            {/* Keynote Legend */}
+            {onOpenKeynoteLegend && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={onOpenKeynoteLegend}
+                    className="ribbon-tool-btn"
+                    title="Open Keynote Legend"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="1" />
+                      <line x1="7" y1="8" x2="17" y2="8" />
+                      <line x1="7" y1="12" x2="17" y2="12" />
+                      <line x1="7" y1="16" x2="14" y2="16" />
+                    </svg>
+                    <span className="ribbon-tool-label">Legend</span>
+                  </button>
+                </div>
+                <div className="ribbon-group-label">Keynotes</div>
+              </div>
+            )}
+
             {/* Clash Detection */}
             <div className="ribbon-group">
               <div className="ribbon-group-tools">
@@ -2971,6 +3179,194 @@ export default function RibbonToolbar({
               </div>
               <div className="ribbon-group-label">Clash Detection</div>
             </div>
+
+            {/* Sheet Composer */}
+            {onOpenSheetComposer && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={onOpenSheetComposer}
+                    className="ribbon-tool-btn"
+                    title="Open Sheet Composer"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="1" />
+                      <line x1="3" y1="7" x2="21" y2="7" />
+                      <rect
+                        x="5"
+                        y="9"
+                        width="8"
+                        height="6"
+                        rx="0.5"
+                        strokeDasharray="2 1"
+                      />
+                      <rect
+                        x="15"
+                        y="9"
+                        width="4"
+                        height="4"
+                        rx="0.5"
+                        strokeDasharray="2 1"
+                      />
+                    </svg>
+                    <span className="ribbon-tool-label">Sheets</span>
+                  </button>
+                </div>
+                <div className="ribbon-group-label">Sheets</div>
+              </div>
+            )}
+
+            {/* Design Options */}
+            {onDesignOptionChange && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = prompt("Design option name:");
+                      if (!name) return;
+                      const newOpt: DesignOption = {
+                        id: crypto.randomUUID(),
+                        name,
+                        description: "",
+                        elementIds: selectedElementIds,
+                        active: true,
+                      };
+                      onDesignOptionChange([...designOptions, newOpt]);
+                    }}
+                    className="ribbon-tool-btn"
+                    title="Create Design Option from selected elements"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" />
+                      <line
+                        x1="12"
+                        y1="3"
+                        x2="12"
+                        y2="21"
+                        strokeDasharray="2 2"
+                      />
+                    </svg>
+                    <span className="ribbon-tool-label">New Opt</span>
+                  </button>
+                  {designOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        const updated = designOptions.map((o) =>
+                          o.id === opt.id ? { ...o, active: !o.active } : o,
+                        );
+                        onDesignOptionChange(updated);
+                      }}
+                      className={`ribbon-tool-btn ${opt.active ? "ribbon-tool-active" : ""}`}
+                      title={`${opt.active ? "Hide" : "Show"}: ${opt.name}`}
+                      style={{
+                        fontSize: "9px",
+                        maxWidth: "48px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span className="ribbon-tool-label">{opt.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ribbon-group-label">Design Options</div>
+              </div>
+            )}
+
+            {/* Worksets */}
+            {onWorksetsChange && worksets.length > 0 && (
+              <div className="ribbon-group">
+                <div
+                  className="ribbon-group-tools"
+                  style={{ flexWrap: "wrap", maxWidth: 200 }}
+                >
+                  {worksets.map((ws) => (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => {
+                        const updated = worksets.map((w) =>
+                          w.id === ws.id ? { ...w, editable: !w.editable } : w,
+                        );
+                        onWorksetsChange(updated);
+                      }}
+                      className={`ribbon-tool-btn ${ws.editable ? "ribbon-tool-active" : ""}`}
+                      title={`${ws.name} — ${ws.editable ? "Editable" : "Read-only"} (${ws.owner})`}
+                      style={{
+                        fontSize: "8px",
+                        maxWidth: "60px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span className="ribbon-tool-label">{ws.name}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = prompt("Workset name:");
+                      if (!name) return;
+                      const ws: Workset = {
+                        id: crypto.randomUUID(),
+                        name,
+                        owner: "You",
+                        editable: true,
+                        elementIds: selectedElementIds,
+                      };
+                      onWorksetsChange([...worksets, ws]);
+                    }}
+                    className="ribbon-tool-btn"
+                    title="Create new workset"
+                    style={{ fontSize: "8px" }}
+                  >
+                    <span className="ribbon-tool-label">+ New</span>
+                  </button>
+                </div>
+                <div className="ribbon-group-label">Worksets</div>
+              </div>
+            )}
+
+            {/* Topography */}
+            {onGenerateTerrain && (
+              <div className="ribbon-group">
+                <div className="ribbon-group-tools">
+                  <button
+                    type="button"
+                    onClick={onGenerateTerrain}
+                    className="ribbon-tool-btn"
+                    title="Generate sample terrain surface"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path d="M2 20 L6 14 L10 16 L14 10 L18 13 L22 8" />
+                      <line x1="2" y1="20" x2="22" y2="20" />
+                    </svg>
+                    <span className="ribbon-tool-label">Terrain</span>
+                  </button>
+                </div>
+                <div className="ribbon-group-label">Site</div>
+              </div>
+            )}
           </div>
         )}
       </div>
