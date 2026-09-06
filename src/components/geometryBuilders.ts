@@ -1521,11 +1521,22 @@ export function computeWallOpenings(
     const height = params.height ?? 2.1;
     const bottomOffset = el.type === "window" ? (params.sillHeight ?? 0.9) : 0;
 
-    // The whole opening must fit the wall span, or ExtrudeGeometry receives a
-    // hole lying outside the wall outline.
-    if (t - width / 2 < -0.01 || t + width / 2 > wallLength + 0.01) continue;
+    // A hole reaching past the wall outline breaks ExtrudeGeometry, but a door
+    // hard against a corner legitimately overhangs the centerline by a few
+    // centimetres — the eval corpus shows overhangs of 4-10cm on doors that are
+    // otherwise correct, and computeWallJoins extends the rendered wall past
+    // this length anyway. So nudge a slight overhang back inside the span and
+    // only discard an opening that misses the wall outright.
+    if (width > wallLength) continue;
+    const maxOverhang = Math.max(thickness, 0.15);
+    const overhang = Math.max(width / 2 - t, t + width / 2 - wallLength, 0);
+    if (overhang > maxOverhang) continue;
+    const centerAlongWall = Math.min(
+      Math.max(t, width / 2),
+      wallLength - width / 2,
+    );
 
-    openings.push({ centerAlongWall: t, width, height, bottomOffset });
+    openings.push({ centerAlongWall, width, height, bottomOffset });
   }
   return openings;
 }

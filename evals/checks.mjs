@@ -110,7 +110,17 @@ export function runChecks(elements) {
       continue;
     }
     const width = num(o.params?.width, 0.9);
-    if (along - width / 2 < -EPS || along + width / 2 > geo.length + EPS) {
+    // A door hard against a corner legitimately overhangs the wall centerline
+    // by a few centimetres, and computeWallJoins extends the drawn wall past
+    // that length anyway, so the renderer nudges a slight overhang back inside
+    // the span. Mirror that tolerance here: flagging a 5cm overhang as a
+    // failure buries the openings that genuinely miss their wall.
+    const overhang = Math.max(
+      width / 2 - along,
+      along + width / 2 - geo.length,
+      0,
+    );
+    if (width > geo.length || overhang > Math.max(geo.thickness, 0.15)) {
       outOfSpan.push({ o, along, length: geo.length, width });
     }
   }

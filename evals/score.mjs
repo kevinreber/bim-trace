@@ -102,6 +102,20 @@ function scoreExpectations(expect, stats) {
   compare("doors", stats.doors, expect.doors);
   compare("windows", stats.windows, expect.windows);
 
+  // Some drawings genuinely admit more than one reading of the storey count —
+  // a roof belvedere reached by a stair is a storey or not depending on where
+  // you draw the line. Asserting one number there scores the ambiguity, not
+  // the model, so those fixtures assert an inclusive range instead.
+  if (Array.isArray(expect.floorsRange)) {
+    const [lo, hi] = expect.floorsRange;
+    out.push({
+      label: "floors",
+      actual: stats.levels,
+      wanted: `${lo}..${hi}`,
+      pass: stats.levels >= lo && stats.levels <= hi,
+    });
+  }
+
   // Adversarial fixtures assert an upper bound instead of an exact count: the
   // right answer is "almost nothing", not a specific number of elements.
   if (typeof expect.maxElements === "number") {

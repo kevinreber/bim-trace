@@ -34,13 +34,16 @@
     {
       "id": "hand-sketch",
       "category": "sketch",
-      "note": "Historical ink drawing: front elevation above, floor plan below, with a semicircular apse. Tests tolerance for imprecise linework, a curved wall, and a large expanse of blank paper.",
+      "note": "Historical ink drawing: front elevation above, floor plan below, with a semicircular apse. Tests tolerance for imprecise linework, a curved wall, and a large expanse of blank paper. STOREY COUNT IS AMBIGUOUS BY DESIGN: the main body is a single storey, but the elevation shows a columned belvedere raised above the roof balustrade and the plan draws a staircase serving it, so both 1 and 2 are defensible readings. It asserts a range rather than an exact count \u2014 an exact assertion here scores the ambiguity instead of the model.",
       "images": [
         "hand-sketch.jpg"
       ],
       "scaleHint": null,
       "expect": {
-        "floors": 1
+        "floorsRange": [
+          1,
+          2
+        ]
       }
     },
     {

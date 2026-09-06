@@ -113,6 +113,11 @@ geometry:
 ```
 
 Counts are compared exactly; `footprintMeters` allows 25% deviation.
+`floorsRange: [min, max]` asserts an inclusive band instead of an exact
+storey count, for drawings where the count genuinely admits more than one
+reading — `hand-sketch` has a roof belvedere served by a stair, which is a
+storey or not depending on where you draw the line, and asserting one number
+there scores the ambiguity rather than the model.
 `maxElements` asserts an upper bound instead, for adversarial fixtures where the
 right answer is "almost nothing" rather than a specific number.
 

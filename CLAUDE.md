@@ -98,7 +98,7 @@ Both `server/apiProxy.ts` (dev) and `api/generate-floor-plan.ts` (production) bu
 - Requests are streamed (`.stream().finalMessage()`) because a 32k `max_tokens` on a non-streaming request risks an HTTP timeout.
 
 ### Evals
-`evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored).
+`evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored). Scoring reads only from disk, so re-score after changing a check instead of spending another capture. Where a drawing genuinely admits more than one storey count, the fixture asserts `floorsRange: [min, max]` rather than an exact `floors` — `hand-sketch` has a roof belvedere served by a stair drawn in the plan, so both 1 and 2 are defensible and an exact assertion would score the ambiguity rather than the model.
 
 ### End-to-end tests
 `e2e/` holds the Playwright suite; `playwright.config.ts` starts `npm run dev` automatically and reuses an already-running server outside CI. `e2e/smoke.spec.ts` covers the shell — ribbon tab switching, the `Shift+W` / `Escape` / `G` keyboard shortcuts, and the metric/imperial toggle — by driving real state transitions with nothing stubbed.
@@ -157,6 +157,8 @@ When a door or window is hosted on a wall (`hostWallId`), the wall geometry auto
 - Projects each opening's position onto the wall centerline
 - `buildWallMesh()` uses `THREE.Shape` with holes + `ExtrudeGeometry` instead of `BoxGeometry`
 - Openings are recalculated on every scene sync (when `bimElements` changes)
+
+Two guards keep a bad `hostWallId` from cutting a hole in the wrong place. An opening further than `thickness + 0.1` off the wall centerline is discarded outright, since it names this wall but sits somewhere else. Along the wall axis the rule is deliberately forgiving: a door hard against a corner legitimately overhangs the centerline by a few centimetres (the eval corpus shows 4–10cm on otherwise correct doors, and `computeWallJoins` extends the drawn wall past that length anyway), so an overhang within `max(thickness, 0.15)` is nudged back inside the span rather than rejected. Only an opening that misses the wall by more than that, or is wider than the wall, is dropped. `evals/checks.mjs` mirrors this tolerance in `opening_within_span` — if you change one, change both, or the eval will report failures the renderer handles fine.
 
 ## Element Selection
 - **3D click**: Raycast through scene meshes; prefers doors/windows over host walls within 0.3m tolerance
