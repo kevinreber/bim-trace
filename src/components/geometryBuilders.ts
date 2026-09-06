@@ -1576,6 +1576,11 @@ export function computeWallOpenings(
 
   const dirX = dx / wallLength;
   const dirZ = dz / wallLength;
+  const thickness = (wall.params as { thickness?: number }).thickness ?? 0.2;
+  // Openings are matched by hostWallId alone, so a mis-placed door can name this
+  // wall while sitting somewhere else. Projecting it on anyway cuts a hole where
+  // no door is, so drop anything that is not actually on the wall.
+  const maxPerpOffset = thickness + 0.1;
 
   for (const el of allElements) {
     if (el.hostWallId !== wall.id) continue;
@@ -1584,11 +1589,16 @@ export function computeWallOpenings(
     const hx = el.start.x - wall.start.x;
     const hz = el.start.z - wall.start.z;
     const t = hx * dirX + hz * dirZ;
+    if (Math.abs(hx * -dirZ + hz * dirX) > maxPerpOffset) continue;
 
     const params = el.params as Record<string, number>;
     const width = params.width ?? 0.9;
     const height = params.height ?? 2.1;
     const bottomOffset = el.type === "window" ? (params.sillHeight ?? 0.9) : 0;
+
+    // The whole opening must fit the wall span, or ExtrudeGeometry receives a
+    // hole lying outside the wall outline.
+    if (t - width / 2 < -0.01 || t + width / 2 > wallLength + 0.01) continue;
 
     openings.push({ centerAlongWall: t, width, height, bottomOffset });
   }

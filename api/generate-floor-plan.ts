@@ -1,5 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { SYSTEM_PROMPT } from "../server/prompt";
+import {
+  BIM_OUTPUT_SCHEMA,
+  EFFORT,
+  MAX_TOKENS,
+  buildUserText,
+  resolveModel,
+} from "../server/aiConfig";
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 
@@ -36,15 +43,7 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const imageCount = body.images.length;
-    const multiImageNote =
-      imageCount > 1
-        ? ` You have been provided ${imageCount} images of the same building from different angles/views. Cross-reference ALL images to get the most accurate and complete building model. Look for details visible in one image but not another (e.g., side windows, rear doors, upper floor layout).`
-        : "";
-
-    const userText = body.scaleHint
-      ? `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Scale hint: ${body.scaleHint}. Use the thinking block for all your reasoning and analysis. Respond with ONLY the JSON array.`
-      : `Analyze ${imageCount > 1 ? "these images" : "this image"} and generate BIM elements for the COMPLETE building (all floors, roof, stairs, structural elements) as a JSON array.${multiImageNote} Estimate reasonable dimensions in meters based on typical residential/commercial proportions. Use the thinking block for all your reasoning and analysis. Respond with ONLY the JSON array.`;
+    const userText = buildUserText(body.images.length, body.scaleHint);
 
     const client = new Anthropic({ apiKey });
 
@@ -62,25 +61,21 @@ export default async function handler(req: Request): Promise<Response> {
     }
     content.push({ type: "text", text: userText });
 
-    const ALLOWED_MODELS = [
-      "claude-opus-4-20250514",
-      "claude-sonnet-4-20250514",
-    ];
-    const selectedModel = ALLOWED_MODELS.includes(body.model ?? "")
-      ? body.model!
-      : "claude-opus-4-20250514";
-    const isOpus = selectedModel.includes("opus");
-
-    const response = await client.messages.create({
-      model: selectedModel,
-      max_tokens: isOpus ? 64000 : 16000,
-      thinking: {
-        type: "enabled",
-        budget_tokens: isOpus ? 40000 : 10000,
-      },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content }],
-    });
+    // Streamed: `budget_tokens` is rejected on Claude 5 models, and a 32k
+    // ceiling on a non-streaming request risks an HTTP timeout.
+    const response = await client.messages
+      .stream({
+        model: resolveModel(body.model),
+        max_tokens: MAX_TOKENS,
+        thinking: { type: "adaptive" },
+        output_config: {
+          effort: EFFORT,
+          format: { type: "json_schema", schema: BIM_OUTPUT_SCHEMA },
+        },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content }],
+      })
+      .finalMessage();
 
     // Extract text from response (skip thinking blocks)
     const textBlock = response.content.find(
@@ -90,10 +85,17 @@ export default async function handler(req: Request): Promise<Response> {
       throw new Error("No text response received from AI");
     }
 
-    return new Response(JSON.stringify({ text: textBlock.text }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        text: textBlock.text,
+        stopReason: response.stop_reason,
+        usage: response.usage,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown server error";

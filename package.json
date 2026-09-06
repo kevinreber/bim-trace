@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "lint": "biome check src",
     "format": "biome format --write src",
-    "check": "biome check --write src"
+    "check": "biome check --write src",
+    "eval:run": "node evals/run.mjs",
+    "eval:score": "node evals/score.mjs",
+    "eval:selftest": "node evals/selftest.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",

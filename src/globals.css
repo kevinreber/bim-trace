@@ -23,6 +23,7 @@
   --text-muted: #6b6b80;
   --accent-blue: #5b9bd5;
   --accent-green: #4caf50;
+  --accent-amber: #e0a030;
 }
 
 * {
@@ -1010,6 +1011,16 @@ body,
   font-weight: 600;
   color: var(--accent-green);
   margin-bottom: 8px;
+}
+
+.ai-modal-warnings {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+  font-size: 11px;
+  color: var(--text-primary);
 }
 
 .ai-modal-preview-counts {

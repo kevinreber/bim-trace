@@ -373,6 +373,13 @@ export default function AiGenerateModal({
                 </span>
               )}
             </div>
+            {result.warnings.length > 0 && (
+              <ul className="ai-modal-warnings">
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
             <div className="ai-modal-preview-counts">
               {result.wallCount > 0 && (
                 <span className="ai-modal-count-badge">

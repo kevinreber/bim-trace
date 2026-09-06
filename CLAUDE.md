@@ -22,6 +22,9 @@ Copy `.env.example` to `.env` and fill in the values:
 - `npm run build` — Production build
 - `npx @biomejs/biome check src/` — Lint and format check
 - `npx @biomejs/biome check --write src/` — Auto-fix lint/format issues
+- `npm run eval:run` — Capture AI generation responses for the eval fixtures (needs `npm run dev` running)
+- `npm run eval:score` — Score the newest captured eval run
+- `npm run eval:selftest` — Verify the eval checks themselves still fire
 
 ## Key Architecture
 
@@ -47,6 +50,7 @@ Copy `.env.example` to `.env` and fill in the values:
 - **`src/types.ts`** — All BIM element types (BimElementType, BimElementParams, DEFAULT_PARAMS)
 - **`src/globals.css`** — Revit-inspired theme with CSS custom properties and ribbon/panel styles
 - **`server/prompt.ts`** — Shared AI system prompt for floor plan generation
+- **`server/aiConfig.ts`** — Shared request config for both proxies: allowed models, default model, `BIM_OUTPUT_SCHEMA` (structured-output JSON schema), `buildUserText()`; also the source of the client-side model dropdown so the two paths cannot drift
 - **`server/apiProxy.ts`** — Vite dev server plugin that proxies `/api/generate-floor-plan` to Anthropic API (keeps API key server-side)
 - **`api/generate-floor-plan.ts`** — Vercel serverless edge function for the same endpoint in production
 
@@ -81,8 +85,18 @@ Copy `.env.example` to `.env` and fill in the values:
 - **`src/components/CreationToolbar.tsx`** — Legacy creation toolbar (replaced by RibbonToolbar)
 
 ### AI Services
-- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with extended thinking and multi-image support
+- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with adaptive thinking and multi-image support; `validateAndFixElements` returns `{ elements, warnings }` so discarded elements are reported rather than dropped silently
 - **`src/services/aiApiKeyStore.ts`** — Browser-local API key persistence
+
+### AI Request Configuration
+Both `server/apiProxy.ts` (dev) and `api/generate-floor-plan.ts` (production) build an identical request from `server/aiConfig.ts`:
+- Models are Claude 5 (`claude-opus-5` default, `claude-sonnet-5`). **`budget_tokens` is rejected on Claude 5** — use `thinking: { type: "adaptive" }` with `output_config: { effort }` instead.
+- Structured outputs (`output_config.format`) constrain the response to `{ "elements": [...] }`, so the model cannot return prose around the JSON. The API rejects `additionalProperties` as an object and rejects `minimum`/`maximum` on numeric schemas, so `params` enumerates every type's keys explicitly and values cannot be bounded. `numRisers` is typed `integer` because an unbounded number grammar let constrained decoding fall into a runaway literal that consumed the whole token budget.
+- The system prompt classifies the input as a MEASURED DRAWING or a PICTORIAL image before anything else, and applies a different ruleset to each. Drawings are modelled literally — no inferred storeys, no inferred windows. Photographs get the depth-inference guidance. Getting this branch wrong is the single largest source of bad output.
+- Requests are streamed (`.stream().finalMessage()`) because a 32k `max_tokens` on a non-streaming request risks an HTTP timeout.
+
+### Evals
+`evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored).
 
 ## Documentation Policy
 **Every commit MUST include documentation updates for all affected docs.**
