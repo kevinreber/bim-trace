@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Unknown material keys rendered invisible meshes** — `getMaterialForElement` indexed `MATERIAL_LIBRARY` directly and returned `undefined` for an unrecognised key; it now falls back to `concrete`
 - **Undiagnosable persistence failures** — `loadProject`, the debounced auto-save, and `clearProject` all swallowed rejections with an empty `.catch(() => {})`, so an IndexedDB failure discarded the user's project with no trace; all three now log a warning
 
+### Docs
+- **README corrected and expanded** — the Build Plan told readers to "Initialize Next.js", contradicting the tech stack table in the same file three sections above; the project has always been Vite. Phases 1 and 2 were also entirely unchecked despite being shipped (the IFC drag-and-drop zone, the PDF.js viewer, the Fabric.js markup layer, and the Cloud and Callout tools all exist), and Phase 3 conflated Supabase with save/load, which ships today against IndexedDB. Added a Getting Started section with the command table, since `test:e2e` and the eval commands were documented nowhere a newcomer would look, and flagged that `eval:run` spends real credits while `eval:score` does not. Tech stack table gained Testing (Playwright) and Persistence (IndexedDB) rows
+
 ### Removed
 - **Dead `ELEMENT_MATERIALS` export** — roughly 80 lines of `MeshStandardMaterial` instances left over from the `MATERIAL_LIBRARY` refactor, constructed at module load and referenced nowhere; per-type defaults live in `DEFAULT_ELEMENT_MATERIAL` in `src/types.ts`, and `CLAUDE.md` step 4 pointed at the dead export until now
 
