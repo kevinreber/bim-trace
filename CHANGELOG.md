@@ -37,6 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Unclosed wall corners** — near-coincident wall endpoints are snapped to a shared point per level before openings are placed, since models place corners within centimetres but rarely emit identical floats
 - **Silently discarded doors and windows** — `validateAndFixElements` dropped every opening whose `hostWallId` did not resolve to a generated wall, with no warning, and then reported the reduced count as if it were the model's output; discarded elements are now counted and surfaced in the AI modal
 - **Wall openings cut at bogus positions** — `computeWallOpenings` projected an opening onto its host wall using only the parallel component, so a door positioned metres away from its wall still cut a hole there, and an opening past the wall's end produced a hole outside the wall outline; openings are now rejected unless they sit on the wall and fit within its span
+- **Tee fittings rendered as cubes** — `buildFittingMesh` built two cylinders for a tee, rotated one, then discarded both and rendered a plain `BoxGeometry`; the two geometries were allocated on every call and never disposed. A tee is now a run cylinder with a rotated branch mesh, matching how `buildWindowMesh` assembles its frame bars
+- **Leaked window frame materials** — `buildWindowMesh` allocated a fresh `MeshStandardMaterial` for the frame on every call and never disposed it, so GPU memory grew with each scene sync; the material is now a shared module-level constant
+- **Unknown material keys rendered invisible meshes** — `getMaterialForElement` indexed `MATERIAL_LIBRARY` directly and returned `undefined` for an unrecognised key; it now falls back to `concrete`
+- **Undiagnosable persistence failures** — `loadProject`, the debounced auto-save, and `clearProject` all swallowed rejections with an empty `.catch(() => {})`, so an IndexedDB failure discarded the user's project with no trace; all three now log a warning
+
+### Removed
+- **Dead `ELEMENT_MATERIALS` export** — roughly 80 lines of `MeshStandardMaterial` instances left over from the `MATERIAL_LIBRARY` refactor, constructed at module load and referenced nowhere; per-type defaults live in `DEFAULT_ELEMENT_MATERIAL` in `src/types.ts`, and `CLAUDE.md` step 4 pointed at the dead export until now
 
 ### Added
 - **`.env.example`** — documents the optional `ANTHROPIC_API_KEY` environment variable (fallback when no user key provided)
