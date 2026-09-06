@@ -4,7 +4,7 @@
     {
       "id": "cad-plan-clean",
       "category": "orthographic-plan",
-      "note": "CONTROL CASE. Crisp CAD floor plan, 35ft x 30ft, dimension strings on all four sides, single storey, no windows drawn. Should score near-perfect. If it does not, the problem is the prompt or schema rather than model vision, and switching models will not help. Door count is 9 swing arcs by visual inspection \u2014 verify before trusting a failure.",
+      "note": "CONTROL CASE. Crisp CAD floor plan, 35ft x 30ft, dimension strings on all four sides, single storey, no windows drawn. Should score near-perfect. If it does not, the problem is the prompt or schema rather than model vision, and switching models will not help. Door count is 9 swing arcs by visual inspection \u2014 verify before trusting a failure. The MEASURED DRAWING ruleset tells the model to add a roof only if the drawing shows one, and a bare floor plan does not, so has_roof is skipped here \u2014 scoring it inverts the signal, marking the run that obeyed the prompt a failure and the runs that invented a roof a pass.",
       "images": [
         "cad-plan-clean.jpg"
       ],
@@ -17,19 +17,25 @@
           10.7,
           9.1
         ]
-      }
+      },
+      "skipChecks": [
+        "has_roof"
+      ]
     },
     {
       "id": "l-shaped-plan",
       "category": "orthographic-plan",
-      "note": "Irregular footprint: utility bay projects at the top, entrance lobby at the lower left, stair block upper left. Targets the 'do not default to a rectangle' failure. Window (W) and ventilator (V) symbols are hard to tell apart, so no opening counts are asserted.",
+      "note": "Irregular footprint: utility bay projects at the top, entrance lobby at the lower left, stair block upper left. Targets the 'do not default to a rectangle' failure. Window (W) and ventilator (V) symbols are hard to tell apart, so no opening counts are asserted. The MEASURED DRAWING ruleset tells the model to add a roof only if the drawing shows one, and a bare floor plan does not, so has_roof is skipped here \u2014 scoring it inverts the signal, marking the run that obeyed the prompt a failure and the runs that invented a roof a pass.",
       "images": [
         "l-shaped-plan.jpg"
       ],
       "scaleHint": null,
       "expect": {
         "floors": 1
-      }
+      },
+      "skipChecks": [
+        "has_roof"
+      ]
     },
     {
       "id": "hand-sketch",

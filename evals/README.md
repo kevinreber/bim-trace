@@ -127,6 +127,14 @@ nothing is the correct behaviour there, so an incomplete structure is not a
 defect. Excluded checks are still printed, marked `(not scored)`, and are left
 out of the failure-rate table.
 
+The two `orthographic-plan` fixtures skip `has_roof` for the same reason. The
+MEASURED DRAWING ruleset in the system prompt says to add a roof only when the
+drawing shows one, and a bare floor plan does not. Scoring `has_roof` there
+inverts the signal: the captured run that obeyed the prompt and emitted no roof
+was marked a failure, while the two runs that invented a roof passed. A check
+that rewards ignoring the prompt will steer prompt tuning the wrong way, which
+is worse than no check at all.
+
 ## Images
 
 The corpus ships with 10 images covering 7 fixtures, sourced from Wikimedia
