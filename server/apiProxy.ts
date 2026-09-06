@@ -7,6 +7,7 @@ import {
   MAX_TOKENS,
   buildUserText,
   resolveModel,
+  validateGenerateRequest,
 } from "./aiConfig";
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
@@ -54,6 +55,14 @@ export function apiProxyPlugin(): Plugin {
                   "No API key provided. Please enter your Anthropic API key.",
               }),
             );
+            return;
+          }
+
+          const invalid = validateGenerateRequest(body);
+          if (invalid) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: invalid }));
             return;
           }
 

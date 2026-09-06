@@ -32,6 +32,59 @@ export function resolveModel(requested: string | undefined): string {
     : DEFAULT_MODEL;
 }
 
+/**
+ * Upper bound on images per request. The modal caps uploads at 5, but the
+ * endpoint is reachable directly, and each image is billed input on whichever
+ * key ends up paying — the caller's, or `ANTHROPIC_API_KEY` if the deployment
+ * sets one. Without a cap, one request can carry an arbitrary number.
+ */
+export const MAX_IMAGES = 5;
+
+const ALLOWED_MEDIA_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+];
+
+/**
+ * Validates the request body, returning an error string or null.
+ *
+ * Both proxies read `body.images.length` before anything else, so a body
+ * without `images` threw a TypeError and surfaced as a 500 carrying a raw
+ * JavaScript message. A malformed request is the caller's error and should
+ * say so.
+ */
+export function validateGenerateRequest(body: unknown): string | null {
+  if (!body || typeof body !== "object") return "Request body must be an object.";
+  const { images } = body as { images?: unknown };
+  if (!Array.isArray(images) || images.length === 0) {
+    return "Request must include a non-empty `images` array.";
+  }
+  if (images.length > MAX_IMAGES) {
+    return `Too many images: ${images.length}. The maximum is ${MAX_IMAGES}.`;
+  }
+  for (const image of images) {
+    if (!image || typeof image !== "object") {
+      return "Each image must be an object with `imageBase64` and `mediaType`.";
+    }
+    const { imageBase64, mediaType } = image as {
+      imageBase64?: unknown;
+      mediaType?: unknown;
+    };
+    if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
+      return "Each image must carry a non-empty `imageBase64` string.";
+    }
+    if (
+      typeof mediaType !== "string" ||
+      !ALLOWED_MEDIA_TYPES.includes(mediaType)
+    ) {
+      return `Unsupported mediaType. Allowed: ${ALLOWED_MEDIA_TYPES.join(", ")}.`;
+    }
+  }
+  return null;
+}
+
 // The API rejects `minimum`/`maximum` on numeric schemas, so values cannot be
 // bounded here. The one lever available is `integer`, which narrows the number
 // grammar enough to block the runaway-literal failure observed on numRisers

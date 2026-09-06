@@ -6,6 +6,7 @@ import {
   MAX_TOKENS,
   buildUserText,
   resolveModel,
+  validateGenerateRequest,
 } from "../server/aiConfig";
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
@@ -41,6 +42,14 @@ export default async function handler(req: Request): Promise<Response> {
         }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
+    }
+
+    const invalid = validateGenerateRequest(body);
+    if (invalid) {
+      return new Response(JSON.stringify({ error: invalid }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const userText = buildUserText(body.images.length, body.scaleHint);

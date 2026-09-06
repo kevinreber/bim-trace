@@ -142,7 +142,16 @@ function scoreExpectations(expect, stats) {
   return out;
 }
 
-const files = fs.readdirSync(runDir).filter((f) => f.endsWith(".json") && f !== "meta.json");
+// Only capture records, which the runner names `<fixtureId>.<n>.json`. Scoring
+// writes summary.json into this same directory and is meant to be re-run freely,
+// so a bare `*.json` filter reads the previous summary back in as if it were a
+// model response: it has no `ok` field, so it counted as a request failure and
+// nested the whole previous summary inside the new one, growing the file on
+// every pass. meta.json is excluded for the same reason.
+const RESPONSE_FILE = /^.+\.\d+\.json$/;
+const files = fs
+  .readdirSync(runDir)
+  .filter((f) => RESPONSE_FILE.test(f) && f !== "meta.json" && f !== "summary.json");
 const results = [];
 const checkTally = new Map(CHECK_IDS.map((id) => [id, { pass: 0, fail: 0 }]));
 let unparseable = 0;
@@ -150,6 +159,10 @@ let requestFailures = 0;
 
 for (const file of files.sort()) {
   const record = JSON.parse(fs.readFileSync(path.join(runDir, file), "utf8"));
+  if (typeof record.fixtureId !== "string") {
+    console.warn(`  skipping ${file} — not a capture record`);
+    continue;
+  }
   if (!record.ok) {
     requestFailures++;
     results.push({ ...record, status: "request-failed" });
@@ -186,7 +199,7 @@ for (const file of files.sort()) {
 
 const scored = results.filter((r) => r.status === "scored");
 
-console.log(`\nrun ${runId} — ${files.length} responses (${scored.length} scored, ${unparseable} unparseable, ${requestFailures} request failures)\n`);
+console.log(`\nrun ${runId} — ${results.length} responses (${scored.length} scored, ${unparseable} unparseable, ${requestFailures} request failures)\n`);
 
 for (const r of scored) {
   const failed = r.checks.filter((c) => !c.pass);
