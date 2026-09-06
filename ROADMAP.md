@@ -452,6 +452,7 @@
 - [x] **Image-to-massing** — upload building photo, AI generates approximate 3D model
 - [ ] **PDF-to-BIM** — import existing floor plan PDF, AI traces walls into 3D elements
 - [ ] **Napkin sketch mode** — draw rough shapes in 2D, AI snaps to clean geometry
+- [ ] **Depth-map assisted generation** — run monocular depth estimation (Depth Anything V2 via ONNX Runtime Web) on uploaded photos and pass the depth map alongside the image, so building depth and setbacks are measured rather than guessed. A working prototype is parked on `origin/claude/optimize-depth-estimation-YyIKU`; it predates the server-side proxy and the Claude 5 migration, so its prompt guidance needs re-homing in `server/prompt.ts` and `depthMaps` needs plumbing through `server/aiConfig.ts`. Decide with the eval harness first: capture `exterior-front` and `exterior-multi` with and without depth maps and compare scores before spending the dependency
 
 ### AI Design Assistance
 - [ ] **Auto-room detection** — trace enclosed wall loops, identify rooms, calculate areas
@@ -656,7 +657,9 @@
 
 ## Technical Debt & Infrastructure (Ongoing)
 
-- [ ] **Testing** — unit tests (Vitest), component tests (Testing Library), E2E (Playwright)
+- [x] **E2E testing** — Playwright smoke suite over the ribbon, status bar, and keyboard shortcuts (`npm run test:e2e`)
+- [ ] **Unit & component testing** — unit tests (Vitest) and component tests (Testing Library)
+- [x] **AI generation evals** — `evals/` scores raw model output against a stratified fixture corpus (`npm run eval:run`, `eval:score`, `eval:selftest`)
 - [ ] **CI/CD** — GitHub Actions for lint, type-check, test, build, deploy
 - [ ] **Error tracking** — Sentry integration for runtime errors
 - [ ] **Analytics** — basic usage tracking (page views, feature usage)

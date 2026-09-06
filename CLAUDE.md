@@ -25,6 +25,8 @@ Copy `.env.example` to `.env` and fill in the values:
 - `npm run eval:run` — Capture AI generation responses for the eval fixtures (needs `npm run dev` running)
 - `npm run eval:score` — Score the newest captured eval run
 - `npm run eval:selftest` — Verify the eval checks themselves still fire
+- `npm run test:e2e` — Playwright end-to-end suite (starts the dev server itself)
+- `npm run test:e2e:ui` — Same suite in Playwright's interactive UI mode
 
 ## Key Architecture
 
@@ -97,6 +99,13 @@ Both `server/apiProxy.ts` (dev) and `api/generate-floor-plan.ts` (production) bu
 
 ### Evals
 `evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored).
+
+### End-to-end tests
+`e2e/` holds the Playwright suite; `playwright.config.ts` starts `npm run dev` automatically and reuses an already-running server outside CI. `e2e/smoke.spec.ts` covers the shell — ribbon tab switching, the `Shift+W` / `Escape` / `G` keyboard shortcuts, and the metric/imperial toggle — by driving real state transitions with nothing stubbed.
+
+Two selector traps to know about. `Sidebar.tsx` reuses the `.status-bar` class for its own footer, so tests scope to the application status bar by filtering on the `Level:` readout. Ribbon tab and tool names collide with button labels elsewhere in the app, so tab queries are scoped to `.ribbon-tabs` and tool queries to `.ribbon-panel`.
+
+Biome only lints `src/`, so `e2e/` and `playwright.config.ts` are outside the lint scope but are still type-checked by `tsc -b` during `npm run build`.
 
 ## Documentation Policy
 **Every commit MUST include documentation updates for all affected docs.**

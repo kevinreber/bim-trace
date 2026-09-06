@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Playwright end-to-end suite** — `e2e/smoke.spec.ts` drives the real app through ribbon tab switching, the `Shift+W`/`Escape`/`G` keyboard shortcuts, and the metric/imperial toggle, with nothing stubbed; `playwright.config.ts` starts the dev server itself. Run with `npm run test:e2e`. Salvaged from the abandoned `claude/optimize-depth-estimation-YyIKU` branch, whose depth-estimation feature was left parked but whose test harness was the only test infrastructure this repo had
 - **Vertical gridlines** — Gridlines now extend vertically as semi-transparent planes, making them visible in elevation and section views (not just plan view); vertical dashed lines mark gridline positions in all orthographic views
 - **Level indicators in 3D views** — Levels are now rendered as horizontal dashed green lines with Revit-style triangle markers and labels; visible in elevation and section views to help align elements to story heights
 - **Viewer3D init error handling** — 3D viewport initialization is now wrapped in try-catch to prevent full-app crashes (e.g. when opening 4-up layout with multiple WebGL contexts)
