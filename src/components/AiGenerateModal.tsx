@@ -1,4 +1,9 @@
 import { useCallback, useRef, useState } from "react";
+import {
+  ALLOWED_FORMATS_LABEL,
+  ALLOWED_MEDIA_TYPES,
+  MAX_IMAGES,
+} from "../../server/aiConfig";
 import { clearApiKey, getApiKey, setApiKey } from "../services/aiApiKeyStore";
 import {
   AI_MODELS,
@@ -7,6 +12,10 @@ import {
   generateFloorPlan,
 } from "../services/aiFloorPlanService";
 import type { BimElement } from "../types";
+
+/** Client-side only — the endpoint does not enforce a per-image size. */
+const MAX_IMAGE_MB = 20;
+const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
 
 interface AiGenerateModalProps {
   isOpen: boolean;
@@ -41,23 +50,29 @@ export default function AiGenerateModal({
   const handleFiles = useCallback((files: File[]) => {
     const valid: File[] = [];
     for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        setError("Please select image files (PNG, JPG, or WebP)");
+      // Gate on the endpoint's own list rather than a looser `image/*` test.
+      // The file picker's `accept` is only a hint and is bypassed by drag and
+      // drop, so without this a HEIC photo — the iPhone default — was accepted
+      // here and rejected minutes later by the server.
+      if (!(ALLOWED_MEDIA_TYPES as readonly string[]).includes(file.type)) {
+        const found = file.type || "an unrecognised type";
+        setError(
+          `"${file.name}" is ${found}. Supported formats are ${ALLOWED_FORMATS_LABEL}. Convert it and try again.`,
+        );
         return;
       }
-      if (file.size > 20 * 1024 * 1024) {
-        setError("Each image must be under 20MB");
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError(
+          `"${file.name}" is over ${MAX_IMAGE_MB}MB. Each image must be smaller.`,
+        );
         return;
       }
       valid.push(file);
     }
-    setImageFiles((prev) => {
-      const combined = [...prev, ...valid].slice(0, 5); // max 5 images
-      return combined;
-    });
+    setImageFiles((prev) => [...prev, ...valid].slice(0, MAX_IMAGES));
     setError(null);
     const urls = valid.map((f) => URL.createObjectURL(f));
-    setImagePreviews((prev) => [...prev, ...urls].slice(0, 5));
+    setImagePreviews((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
   }, []);
 
   const handleDrop = useCallback(
@@ -229,7 +244,7 @@ export default function AiGenerateModal({
           <span className="ai-modal-label">
             Building Images{" "}
             <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-              (up to 5 — multiple angles improve accuracy)
+              (up to {MAX_IMAGES} — multiple angles improve accuracy)
             </span>
           </span>
           {/* biome-ignore lint/a11y/useSemanticElements: dropzone needs div for drag-and-drop support */}
@@ -316,14 +331,14 @@ export default function AiGenerateModal({
                 </svg>
                 <span>Drop images here or click to browse</span>
                 <span className="ai-modal-file-hint">
-                  PNG, JPG, WebP up to 20MB each
+                  {ALLOWED_FORMATS_LABEL} &middot; up to {MAX_IMAGE_MB}MB each
                 </span>
               </div>
             )}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept={ALLOWED_MEDIA_TYPES.join(",")}
               multiple
               style={{ display: "none" }}
               onChange={(e) => {
