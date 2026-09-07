@@ -43,23 +43,33 @@ export default async function handler(req: Request): Promise<Response> {
   // failure is therefore reported in the body as `{ "error": ... }`, which the
   // client checks regardless of status.
   const encoder = new TextEncoder();
+  // A generation runs for minutes, so a caller giving up partway through is an
+  // ordinary event rather than an edge case. Aborting stops paying for a
+  // response nobody will read.
+  const aborter = new AbortController();
+  req.signal?.addEventListener("abort", () => aborter.abort());
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let open = true;
-      const beat = () => {
+      // Every write goes through this: once the consumer is gone the controller
+      // throws, and an unguarded enqueue would reject inside `start`.
+      const write = (chunk: string) => {
         if (!open) return;
         try {
-          controller.enqueue(encoder.encode(HEARTBEAT_BYTE));
+          controller.enqueue(encoder.encode(chunk));
         } catch {
           open = false;
         }
       };
-      beat();
-      const timer = setInterval(beat, HEARTBEAT_MS);
+      write(HEARTBEAT_BYTE);
+      const timer = setInterval(() => write(HEARTBEAT_BYTE), HEARTBEAT_MS);
 
       let payload: string;
       try {
-        payload = JSON.stringify(await runGeneration(apiKey, body));
+        payload = JSON.stringify(
+          await runGeneration(apiKey, body, aborter.signal),
+        );
       } catch (err) {
         payload = JSON.stringify({
           error: err instanceof Error ? err.message : "Unknown server error",
@@ -67,9 +77,11 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       clearInterval(timer);
-      open = false;
-      controller.enqueue(encoder.encode(payload));
-      controller.close();
+      write(payload);
+      if (open) controller.close();
+    },
+    cancel() {
+      aborter.abort();
     },
   });
 

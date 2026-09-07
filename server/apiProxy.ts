@@ -52,17 +52,31 @@ export function apiProxyPlugin(): Plugin {
         // needed here — but it is mirrored from the Vercel function on purpose.
         // Testing locally has to exercise the same response shape, or a bug in
         // the streamed path only ever shows up in production.
+        const aborter = new AbortController();
+        res.on("close", () => {
+          // Fires on normal completion too, so only a close before the response
+          // finished means the caller actually walked away.
+          if (!res.writableFinished) aborter.abort();
+        });
+
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Cache-Control", "no-store");
-        res.write(HEARTBEAT_BYTE);
-        const timer = setInterval(() => {
-          if (!res.writableEnded) res.write(HEARTBEAT_BYTE);
-        }, HEARTBEAT_MS);
+        // Writing to a socket the caller has dropped emits an 'error' on the
+        // response, which is unhandled by default and takes the dev server with
+        // it. The callback absorbs it, and destroyed is checked first.
+        const write = (chunk: string) => {
+          if (res.destroyed || res.writableEnded) return;
+          res.write(chunk, () => {});
+        };
+        write(HEARTBEAT_BYTE);
+        const timer = setInterval(() => write(HEARTBEAT_BYTE), HEARTBEAT_MS);
 
         let payload: string;
         try {
-          payload = JSON.stringify(await runGeneration(apiKey, body));
+          payload = JSON.stringify(
+            await runGeneration(apiKey, body, aborter.signal),
+          );
         } catch (err) {
           payload = JSON.stringify({
             error: err instanceof Error ? err.message : "Unknown server error",
@@ -70,7 +84,7 @@ export function apiProxyPlugin(): Plugin {
         }
 
         clearInterval(timer);
-        res.end(payload);
+        if (!res.destroyed && !res.writableEnded) res.end(payload);
       });
     },
   };

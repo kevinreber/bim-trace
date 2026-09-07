@@ -463,11 +463,13 @@ export async function generateFloorPlan(
   imageFiles: File[],
   scaleHint?: string,
   model?: AiModelId,
+  signal?: AbortSignal,
 ): Promise<AiGenerateResult> {
   const images = await Promise.all(imageFiles.map(fileToBase64));
 
   const response = await fetch("/api/generate-floor-plan", {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       apiKey,

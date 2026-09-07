@@ -43,37 +43,56 @@ export default function AiGenerateModal({
   );
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A generation runs for minutes and bills on completion, so abandoning one
+  // has to actually cancel it rather than just stop listening.
+  const abortRef = useRef<AbortController | null>(null);
   const apiKeyInputId = "ai-modal-api-key";
   const scaleHintInputId = "ai-modal-scale-hint";
   const modelSelectId = "ai-modal-model";
 
-  const handleFiles = useCallback((files: File[]) => {
-    const valid: File[] = [];
-    for (const file of files) {
-      // Gate on the endpoint's own list rather than a looser `image/*` test.
-      // The file picker's `accept` is only a hint and is bypassed by drag and
-      // drop, so without this a HEIC photo — the iPhone default — was accepted
-      // here and rejected minutes later by the server.
-      if (!(ALLOWED_MEDIA_TYPES as readonly string[]).includes(file.type)) {
-        const found = file.type || "an unrecognised type";
-        setError(
-          `"${file.name}" is ${found}. Supported formats are ${ALLOWED_FORMATS_LABEL}. Convert it and try again.`,
-        );
-        return;
+  const handleFiles = useCallback(
+    (files: File[]) => {
+      const valid: File[] = [];
+      for (const file of files) {
+        // Gate on the endpoint's own list rather than a looser `image/*` test.
+        // The file picker's `accept` is only a hint and is bypassed by drag and
+        // drop, so without this a HEIC photo — the iPhone default — was accepted
+        // here and rejected minutes later by the server.
+        if (!(ALLOWED_MEDIA_TYPES as readonly string[]).includes(file.type)) {
+          const found = file.type || "an unrecognised type";
+          setError(
+            `"${file.name}" is ${found}. Supported formats are ${ALLOWED_FORMATS_LABEL}. Convert it and try again.`,
+          );
+          return;
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+          setError(
+            `"${file.name}" is over ${MAX_IMAGE_MB}MB. Each image must be smaller.`,
+          );
+          return;
+        }
+        valid.push(file);
       }
-      if (file.size > MAX_IMAGE_BYTES) {
-        setError(
-          `"${file.name}" is over ${MAX_IMAGE_MB}MB. Each image must be smaller.`,
-        );
-        return;
-      }
-      valid.push(file);
-    }
-    setImageFiles((prev) => [...prev, ...valid].slice(0, MAX_IMAGES));
-    setError(null);
-    const urls = valid.map((f) => URL.createObjectURL(f));
-    setImagePreviews((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
-  }, []);
+      // Decide what fits before creating anything: slicing afterwards left object
+      // URLs for the dropped files alive for the life of the page, and dropped
+      // them from the selection without telling anyone.
+      const room = Math.max(MAX_IMAGES - imageFiles.length, 0);
+      const accepted = valid.slice(0, room);
+      const dropped = valid.length - accepted.length;
+
+      setError(
+        dropped > 0
+          ? `Only ${MAX_IMAGES} images can be used at once, so ${dropped} of these were not added.`
+          : null,
+      );
+      setImageFiles((prev) => [...prev, ...accepted]);
+      setImagePreviews((prev) => [
+        ...prev,
+        ...accepted.map((f) => URL.createObjectURL(f)),
+      ]);
+    },
+    [imageFiles.length],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -86,6 +105,8 @@ export default function AiGenerateModal({
   );
 
   const resetModal = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     setState("idle");
     setImageFiles([]);
     setImagePreviews((prev) => {
@@ -110,18 +131,29 @@ export default function AiGenerateModal({
     setState("generating");
     setError(null);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const res = await generateFloorPlan(
         key,
         imageFiles,
         scaleHint.trim() || undefined,
         selectedModel,
+        controller.signal,
       );
+      // Closing the modal at the moment generation completes would otherwise
+      // restore the result that resetModal just cleared.
+      if (controller.signal.aborted) return;
       setResult(res);
       setState("preview");
     } catch (err) {
+      // An abort is the user closing the modal, not a failure to report.
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Generation failed");
       setState("error");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }, [imageFiles, apiKey, scaleHint, selectedModel]);
 

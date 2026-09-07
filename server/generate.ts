@@ -58,6 +58,7 @@ export const HEARTBEAT_BYTE = " ";
 export async function runGeneration(
   apiKey: string,
   body: GenerateRequest,
+  signal?: AbortSignal,
 ): Promise<GenerateResult> {
   const userText = buildUserText(body.images.length, body.scaleHint);
   const client = new Anthropic({ apiKey });
@@ -75,18 +76,24 @@ export async function runGeneration(
   // 32k ceiling on a non-streaming request risks an HTTP timeout. Note this is
   // the upstream leg only; the heartbeat above is what keeps the downstream leg
   // to the browser alive.
+  // The signal matters here because a generation costs real credits and runs for
+  // minutes: without it, a caller who closes the tab keeps the upstream request
+  // alive and pays for a response nobody will read.
   const message = await client.messages
-    .stream({
-      model: resolveModel(body.model),
-      max_tokens: MAX_TOKENS,
-      thinking: { type: "adaptive" },
-      output_config: {
-        effort: EFFORT,
-        format: { type: "json_schema", schema: BIM_OUTPUT_SCHEMA },
+    .stream(
+      {
+        model: resolveModel(body.model),
+        max_tokens: MAX_TOKENS,
+        thinking: { type: "adaptive" },
+        output_config: {
+          effort: EFFORT,
+          format: { type: "json_schema", schema: BIM_OUTPUT_SCHEMA },
+        },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content }],
       },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content }],
-    })
+      { signal },
+    )
     .finalMessage();
 
   const textBlock = message.content.find((block) => block.type === "text");
