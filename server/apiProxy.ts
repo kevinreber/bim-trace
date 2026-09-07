@@ -1,29 +1,11 @@
 import type { Plugin } from "vite";
-import Anthropic from "@anthropic-ai/sdk";
-import { SYSTEM_PROMPT } from "./prompt";
+import { resolveApiKey, validateGenerateRequest } from "./aiConfig";
 import {
-  BIM_OUTPUT_SCHEMA,
-  EFFORT,
-  MAX_TOKENS,
-  buildUserText,
-  resolveApiKey,
-  resolveModel,
-  validateGenerateRequest,
-} from "./aiConfig";
-
-type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
-
-interface ImageEntry {
-  imageBase64: string;
-  mediaType: ImageMediaType;
-}
-
-interface GenerateRequest {
-  apiKey?: string;
-  images: ImageEntry[];
-  scaleHint?: string;
-  model?: string;
-}
+  type GenerateRequest,
+  HEARTBEAT_BYTE,
+  HEARTBEAT_MS,
+  runGeneration,
+} from "./generate";
 
 function readBody(req: import("http").IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,89 +25,52 @@ export function apiProxyPlugin(): Plugin {
           return next();
         }
 
+        const fail = (error: string, status: number) => {
+          res.statusCode = status;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error }));
+        };
+
+        let body: GenerateRequest;
         try {
-          const body = JSON.parse(await readBody(req)) as GenerateRequest;
-
-          const apiKey = resolveApiKey(body.apiKey, process.env);
-          if (!apiKey) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json");
-            res.end(
-              JSON.stringify({
-                error:
-                  "No API key provided. Please enter your Anthropic API key.",
-              }),
-            );
-            return;
-          }
-
-          const invalid = validateGenerateRequest(body);
-          if (invalid) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ error: invalid }));
-            return;
-          }
-
-          const userText = buildUserText(body.images.length, body.scaleHint);
-
-          const client = new Anthropic({ apiKey });
-
-          // Build content array with all images
-          const content: Anthropic.MessageCreateParams["messages"][0]["content"] =
-            [];
-          for (const { imageBase64, mediaType } of body.images) {
-            content.push({
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType,
-                data: imageBase64,
-              },
-            });
-          }
-          content.push({ type: "text", text: userText });
-
-          // Streamed: `budget_tokens` is rejected on Claude 5 models, and a 32k
-          // ceiling on a non-streaming request risks an HTTP timeout.
-          const response = await client.messages
-            .stream({
-              model: resolveModel(body.model),
-              max_tokens: MAX_TOKENS,
-              thinking: { type: "adaptive" },
-              output_config: {
-                effort: EFFORT,
-                format: { type: "json_schema", schema: BIM_OUTPUT_SCHEMA },
-              },
-              system: SYSTEM_PROMPT,
-              messages: [{ role: "user", content }],
-            })
-            .finalMessage();
-
-          // Extract text from response (skip thinking blocks)
-          const textBlock = response.content.find(
-            (block) => block.type === "text",
-          );
-          if (!textBlock || textBlock.type !== "text") {
-            throw new Error("No text response received from AI");
-          }
-
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json");
-          res.end(
-            JSON.stringify({
-              text: textBlock.text,
-              stopReason: response.stop_reason,
-              usage: response.usage,
-            }),
-          );
-        } catch (err) {
-          const message =
-            err instanceof Error ? err.message : "Unknown server error";
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ error: message }));
+          body = JSON.parse(await readBody(req)) as GenerateRequest;
+        } catch {
+          return fail("Request body is not valid JSON.", 400);
         }
+
+        const apiKey = resolveApiKey(body.apiKey, process.env);
+        if (!apiKey) {
+          return fail(
+            "No API key provided. Please enter your Anthropic API key.",
+            400,
+          );
+        }
+        const invalid = validateGenerateRequest(body);
+        if (invalid) return fail(invalid, 400);
+
+        // The dev server has no invocation timeout, so the heartbeat is not
+        // needed here — but it is mirrored from the Vercel function on purpose.
+        // Testing locally has to exercise the same response shape, or a bug in
+        // the streamed path only ever shows up in production.
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.write(HEARTBEAT_BYTE);
+        const timer = setInterval(() => {
+          if (!res.writableEnded) res.write(HEARTBEAT_BYTE);
+        }, HEARTBEAT_MS);
+
+        let payload: string;
+        try {
+          payload = JSON.stringify(await runGeneration(apiKey, body));
+        } catch (err) {
+          payload = JSON.stringify({
+            error: err instanceof Error ? err.message : "Unknown server error",
+          });
+        }
+
+        clearInterval(timer);
+        res.end(payload);
       });
     },
   };

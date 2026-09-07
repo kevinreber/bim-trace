@@ -415,6 +415,49 @@ export type AiModelId = AllowedModel;
 
 export const AI_MODELS: { id: AiModelId; label: string }[] = AI_MODEL_OPTIONS;
 
+export interface ServerPayload {
+  text?: string;
+  stopReason?: string;
+  usage?: unknown;
+  error?: string;
+}
+
+/**
+ * Reads the endpoint's response body.
+ *
+ * Two things this has to survive. The body may open with whitespace — the
+ * proxies send a keep-alive byte while the model works, because a platform that
+ * kills a silent function would otherwise replace the whole response. And the
+ * body may report a failure under a 200, since the status is committed before
+ * the outcome is known, so `error` is checked regardless of status.
+ *
+ * A body that is not JSON at all means something upstream answered instead of
+ * the endpoint — a gateway timeout page, typically. Reporting that as a JSON
+ * syntax error tells the user nothing, so it is surfaced as what it is.
+ */
+export function readServerPayload(
+  raw: string,
+  status: number,
+): ServerPayload & { text: string } {
+  let parsed: ServerPayload;
+  try {
+    parsed = JSON.parse(raw) as ServerPayload;
+  } catch {
+    const preview = raw.trim().slice(0, 200) || "(empty response)";
+    throw new Error(
+      `The server did not return a valid response (HTTP ${status}). This usually means the request timed out before the model finished. Response began: "${preview}"`,
+    );
+  }
+  if (parsed?.error) throw new Error(parsed.error);
+  if (status < 200 || status >= 300) {
+    throw new Error(`Server error (HTTP ${status}).`);
+  }
+  if (typeof parsed?.text !== "string") {
+    throw new Error("The server response contained no generated text.");
+  }
+  return parsed as ServerPayload & { text: string };
+}
+
 export async function generateFloorPlan(
   apiKey: string,
   imageFiles: File[],
@@ -437,13 +480,9 @@ export async function generateFloorPlan(
     }),
   });
 
-  const json = await response.json();
+  const json = readServerPayload(await response.text(), response.status);
 
-  if (!response.ok) {
-    throw new Error(json.error || "Server error");
-  }
-
-  let jsonText = (json.text as string).trim();
+  let jsonText = json.text.trim();
 
   // Strip markdown code fences if present
   if (jsonText.startsWith("```")) {
@@ -453,7 +492,7 @@ export async function generateFloorPlan(
   }
 
   const responseWarnings: string[] = [];
-  const stopReason = json.stopReason as string | undefined;
+  const stopReason = json.stopReason;
 
   let parsed: unknown;
   try {

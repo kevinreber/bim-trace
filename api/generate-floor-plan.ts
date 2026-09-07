@@ -1,119 +1,88 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { SYSTEM_PROMPT } from "../server/prompt";
 import {
-  BIM_OUTPUT_SCHEMA,
-  EFFORT,
-  MAX_TOKENS,
-  buildUserText,
   resolveApiKey,
-  resolveModel,
   validateGenerateRequest,
 } from "../server/aiConfig";
+import {
+  type GenerateRequest,
+  HEARTBEAT_BYTE,
+  HEARTBEAT_MS,
+  runGeneration,
+} from "../server/generate";
 
-type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
-interface ImageEntry {
-  imageBase64: string;
-  mediaType: ImageMediaType;
-}
-
-interface GenerateRequest {
-  apiKey?: string;
-  images: ImageEntry[];
-  scaleHint?: string;
-  model?: string;
+function fail(error: string, status: number): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: JSON_HEADERS,
+  });
 }
 
 export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (req.method !== "POST") return fail("Method not allowed", 405);
 
+  let body: GenerateRequest;
   try {
-    const body = (await req.json()) as GenerateRequest;
-
-    const apiKey = resolveApiKey(body.apiKey, process.env);
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: "No API key provided. Please enter your Anthropic API key.",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    const invalid = validateGenerateRequest(body);
-    if (invalid) {
-      return new Response(JSON.stringify({ error: invalid }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const userText = buildUserText(body.images.length, body.scaleHint);
-
-    const client = new Anthropic({ apiKey });
-
-    // Build content array with all images
-    const content: Anthropic.MessageCreateParams["messages"][0]["content"] = [];
-    for (const { imageBase64, mediaType } of body.images) {
-      content.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: mediaType,
-          data: imageBase64,
-        },
-      });
-    }
-    content.push({ type: "text", text: userText });
-
-    // Streamed: `budget_tokens` is rejected on Claude 5 models, and a 32k
-    // ceiling on a non-streaming request risks an HTTP timeout.
-    const response = await client.messages
-      .stream({
-        model: resolveModel(body.model),
-        max_tokens: MAX_TOKENS,
-        thinking: { type: "adaptive" },
-        output_config: {
-          effort: EFFORT,
-          format: { type: "json_schema", schema: BIM_OUTPUT_SCHEMA },
-        },
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content }],
-      })
-      .finalMessage();
-
-    // Extract text from response (skip thinking blocks)
-    const textBlock = response.content.find(
-      (block) => block.type === "text",
-    );
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response received from AI");
-    }
-
-    return new Response(
-      JSON.stringify({
-        text: textBlock.text,
-        stopReason: response.stop_reason,
-        usage: response.usage,
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unknown server error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    body = (await req.json()) as GenerateRequest;
+  } catch {
+    return fail("Request body is not valid JSON.", 400);
   }
+
+  // Everything cheap is answered with a real status code before the response is
+  // committed. Only the generation itself has to stream, so a malformed request
+  // still gets a 400 rather than a 200 carrying an error.
+  const apiKey = resolveApiKey(body.apiKey, process.env);
+  if (!apiKey) {
+    return fail("No API key provided. Please enter your Anthropic API key.", 400);
+  }
+  const invalid = validateGenerateRequest(body);
+  if (invalid) return fail(invalid, 400);
+
+  // Past this point the status is committed to 200 before the outcome is known,
+  // because the platform kills a function that has not started responding. A
+  // failure is therefore reported in the body as `{ "error": ... }`, which the
+  // client checks regardless of status.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true;
+      const beat = () => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(HEARTBEAT_BYTE));
+        } catch {
+          open = false;
+        }
+      };
+      beat();
+      const timer = setInterval(beat, HEARTBEAT_MS);
+
+      let payload: string;
+      try {
+        payload = JSON.stringify(await runGeneration(apiKey, body));
+      } catch (err) {
+        payload = JSON.stringify({
+          error: err instanceof Error ? err.message : "Unknown server error",
+        });
+      }
+
+      clearInterval(timer);
+      open = false;
+      controller.enqueue(encoder.encode(payload));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      ...JSON_HEADERS,
+      "Cache-Control": "no-store",
+      // Discourage any intermediary from buffering the heartbeat away, which
+      // would defeat the point of sending it.
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
 
 export const config = {

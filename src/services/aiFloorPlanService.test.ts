@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BimElement } from "@/types";
 import {
+  readServerPayload,
   salvageTruncatedElements,
   snapWallEndpoints,
 } from "./aiFloorPlanService";
@@ -118,5 +119,61 @@ describe("salvageTruncatedElements", () => {
 
   it("returns null when there is no array at all", () => {
     expect(salvageTruncatedElements("I cannot help with that.")).toBeNull();
+  });
+});
+
+/**
+ * The endpoint opens its body with keep-alive whitespace and may report failure
+ * under a 200, because the status is committed before the outcome is known.
+ */
+describe("readServerPayload", () => {
+  it("reads a normal payload", () => {
+    const payload = readServerPayload(
+      '{"text":"[]","stopReason":"end_turn"}',
+      200,
+    );
+    expect(payload.text).toBe("[]");
+    expect(payload.stopReason).toBe("end_turn");
+  });
+
+  it("tolerates the leading heartbeat whitespace", () => {
+    const payload = readServerPayload('   \n  {"text":"[]"}', 200);
+    expect(payload.text).toBe("[]");
+  });
+
+  it("throws the server's message when the body reports an error under a 200", () => {
+    expect(() =>
+      readServerPayload('  {"error":"API key is invalid."}', 200),
+    ).toThrow("API key is invalid.");
+  });
+
+  it("throws the server's message on an error status", () => {
+    expect(() =>
+      readServerPayload(
+        '{"error":"Too many images: 6. The maximum is 5."}',
+        400,
+      ),
+    ).toThrow("Too many images: 6");
+  });
+
+  // The regression that sent a user chasing "Unexpected token 'A'": a gateway
+  // timeout page is not JSON, and reporting it as a syntax error hides the cause.
+  it("explains a non-JSON body instead of surfacing a parse error", () => {
+    expect(() =>
+      readServerPayload("An error occurred with this application.", 500),
+    ).toThrow(/did not return a valid response \(HTTP 500\)/);
+    expect(() =>
+      readServerPayload("An error occurred with this application.", 500),
+    ).toThrow(/timed out/);
+  });
+
+  it("reports an empty body rather than an empty preview", () => {
+    expect(() => readServerPayload("", 504)).toThrow(/\(empty response\)/);
+  });
+
+  it("rejects a success payload carrying no text", () => {
+    expect(() => readServerPayload('{"stopReason":"end_turn"}', 200)).toThrow(
+      /no generated text/,
+    );
   });
 });
