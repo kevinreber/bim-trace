@@ -2,92 +2,11 @@ import * as THREE from "three";
 import type {
   BimConstraint,
   BimElement,
-  BimElementType,
   BimMaterialType,
   DetailLevel,
   Topography,
 } from "@/types";
 import { DEFAULT_ELEMENT_MATERIAL } from "@/types";
-
-// ── Materials ──────────────────────────────────────────────────
-
-export const ELEMENT_MATERIALS: Record<
-  BimElementType,
-  THREE.MeshStandardMaterial
-> = {
-  wall: new THREE.MeshStandardMaterial({ color: 0xe8e0d4, roughness: 0.9 }),
-  column: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 }),
-  slab: new THREE.MeshStandardMaterial({ color: 0xbab5ab, roughness: 0.85 }),
-  door: new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.65 }),
-  window: new THREE.MeshStandardMaterial({
-    color: 0x87ceeb,
-    roughness: 0.1,
-    transparent: true,
-    opacity: 0.5,
-    metalness: 0.2,
-  }),
-  beam: new THREE.MeshStandardMaterial({
-    color: 0xa0a0a0,
-    roughness: 0.5,
-    metalness: 0.3,
-  }),
-  ceiling: new THREE.MeshStandardMaterial({
-    color: 0xf5f5f0,
-    roughness: 0.95,
-  }),
-  roof: new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.85 }),
-  stair: new THREE.MeshStandardMaterial({ color: 0xc8b89a, roughness: 0.8 }),
-  railing: new THREE.MeshStandardMaterial({
-    color: 0x404040,
-    roughness: 0.4,
-    metalness: 0.6,
-  }),
-  curtainWall: new THREE.MeshStandardMaterial({
-    color: 0x6ec6e6,
-    roughness: 0.05,
-    transparent: true,
-    opacity: 0.45,
-    metalness: 0.3,
-  }),
-  table: new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.7 }),
-  chair: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.75 }),
-  shelving: new THREE.MeshStandardMaterial({
-    color: 0x9e7c4f,
-    roughness: 0.7,
-  }),
-  desk: new THREE.MeshStandardMaterial({ color: 0x7a5c3c, roughness: 0.7 }),
-  toilet: new THREE.MeshStandardMaterial({
-    color: 0xf0f0f0,
-    roughness: 0.3,
-    metalness: 0.1,
-  }),
-  sink: new THREE.MeshStandardMaterial({
-    color: 0xf5f5f5,
-    roughness: 0.3,
-    metalness: 0.1,
-  }),
-  duct: new THREE.MeshStandardMaterial({
-    color: 0x808080,
-    roughness: 0.5,
-    metalness: 0.4,
-  }),
-  pipe: new THREE.MeshStandardMaterial({
-    color: 0x606060,
-    roughness: 0.4,
-    metalness: 0.5,
-  }),
-  lightFixture: new THREE.MeshStandardMaterial({
-    color: 0xe0e0e0,
-    roughness: 0.3,
-    metalness: 0.2,
-  }),
-  room: new THREE.MeshStandardMaterial({
-    color: 0x93c5fd,
-    roughness: 0.9,
-    transparent: true,
-    opacity: 0.2,
-  }),
-};
 
 // ── Material Library ──────────────────────────────────────────
 
@@ -144,7 +63,8 @@ export function getMaterialForElement(
   el: BimElement,
 ): THREE.MeshStandardMaterial {
   const matKey = el.material ?? DEFAULT_ELEMENT_MATERIAL[el.type];
-  return MATERIAL_LIBRARY[matKey];
+  // An unknown key would otherwise return undefined and render an invisible mesh.
+  return MATERIAL_LIBRARY[matKey] ?? MATERIAL_LIBRARY.concrete;
 }
 
 // ── Ghost / Snap Materials ────────────────────────────────────
@@ -166,6 +86,13 @@ export const INVALID_GHOST_MATERIAL = new THREE.MeshStandardMaterial({
 export const SNAP_INDICATOR_MAT = new THREE.MeshBasicMaterial({
   color: 0x4ade80,
   depthTest: false,
+});
+
+// Shared rather than per-window: buildWindowMesh runs on every scene sync, and
+// a material allocated there is never disposed.
+const WINDOW_FRAME_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xdcdcdc,
+  roughness: 0.4,
 });
 
 // ── Wall opening interface ────────────────────────────────────
@@ -249,9 +176,7 @@ export function computeWallJoins(
 
         // Walls are connected at this endpoint pair
         // Compute the angle between the two wall directions
-        const dot = dirAx * dirBx + dirAz * dirBz;
         const cross = dirAx * dirBz - dirAz * dirBx;
-        const absDot = Math.abs(dot);
         const absCross = Math.abs(cross);
 
         // Skip near-parallel walls (collinear, angle < 10°)
@@ -510,36 +435,32 @@ export function buildWindowMesh(
     mesh.rotation.y = rotation;
   }
 
-  const frameMat = new THREE.MeshStandardMaterial({
-    color: 0xdcdcdc,
-    roughness: 0.4,
-  });
   const ft = 0.04;
 
   const topBar = new THREE.Mesh(
     new THREE.BoxGeometry(width + ft, ft, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   topBar.position.set(0, height / 2, 0);
   mesh.add(topBar);
 
   const bottomBar = new THREE.Mesh(
     new THREE.BoxGeometry(width + ft, ft, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   bottomBar.position.set(0, -height / 2, 0);
   mesh.add(bottomBar);
 
   const leftBar = new THREE.Mesh(
     new THREE.BoxGeometry(ft, height, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   leftBar.position.set(-width / 2, 0, 0);
   mesh.add(leftBar);
 
   const rightBar = new THREE.Mesh(
     new THREE.BoxGeometry(ft, height, 0.06),
-    frameMat,
+    WINDOW_FRAME_MATERIAL,
   );
   rightBar.position.set(width / 2, 0, 0);
   mesh.add(rightBar);
@@ -1371,12 +1292,8 @@ export function buildFittingMesh(
       break;
     }
     case "tee": {
-      // Cross-shaped geometry
-      const g1 = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
-      const g2 = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
-      g2.rotateZ(Math.PI / 2);
-      const merged = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-      geo = merged;
+      // Run of the tee; the branch is added as a child below.
+      geo = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
       break;
     }
     default: {
@@ -1387,6 +1304,14 @@ export function buildFittingMesh(
   }
 
   const mesh = new THREE.Mesh(geo, material);
+  if (conn.type === "tee") {
+    const branch = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8),
+      material,
+    );
+    branch.rotation.z = Math.PI / 2;
+    mesh.add(branch);
+  }
   mesh.position.set(conn.point.x, conn.point.y, conn.point.z);
   return mesh;
 }
@@ -1576,6 +1501,11 @@ export function computeWallOpenings(
 
   const dirX = dx / wallLength;
   const dirZ = dz / wallLength;
+  const thickness = (wall.params as { thickness?: number }).thickness ?? 0.2;
+  // Openings are matched by hostWallId alone, so a mis-placed door can name this
+  // wall while sitting somewhere else. Projecting it on anyway cuts a hole where
+  // no door is, so drop anything that is not actually on the wall.
+  const maxPerpOffset = thickness + 0.1;
 
   for (const el of allElements) {
     if (el.hostWallId !== wall.id) continue;
@@ -1584,13 +1514,29 @@ export function computeWallOpenings(
     const hx = el.start.x - wall.start.x;
     const hz = el.start.z - wall.start.z;
     const t = hx * dirX + hz * dirZ;
+    if (Math.abs(hx * -dirZ + hz * dirX) > maxPerpOffset) continue;
 
     const params = el.params as Record<string, number>;
     const width = params.width ?? 0.9;
     const height = params.height ?? 2.1;
     const bottomOffset = el.type === "window" ? (params.sillHeight ?? 0.9) : 0;
 
-    openings.push({ centerAlongWall: t, width, height, bottomOffset });
+    // A hole reaching past the wall outline breaks ExtrudeGeometry, but a door
+    // hard against a corner legitimately overhangs the centerline by a few
+    // centimetres — the eval corpus shows overhangs of 4-10cm on doors that are
+    // otherwise correct, and computeWallJoins extends the rendered wall past
+    // this length anyway. So nudge a slight overhang back inside the span and
+    // only discard an opening that misses the wall outright.
+    if (width > wallLength) continue;
+    const maxOverhang = Math.max(thickness, 0.15);
+    const overhang = Math.max(width / 2 - t, t + width / 2 - wallLength, 0);
+    if (overhang > maxOverhang) continue;
+    const centerAlongWall = Math.min(
+      Math.max(t, width / 2),
+      wallLength - width / 2,
+    );
+
+    openings.push({ centerAlongWall, width, height, bottomOffset });
   }
   return openings;
 }

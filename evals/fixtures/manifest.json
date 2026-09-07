@@ -1,0 +1,111 @@
+{
+  "_readme": "Fixture corpus for image-to-BIM evaluation. Images and licences are documented in ATTRIBUTION.md. Expectations were derived by visually inspecting each image; counts marked uncertain in the note should be spot-checked before you trust a failure. Fixtures whose images are absent are skipped by the runner.",
+  "fixtures": [
+    {
+      "id": "cad-plan-clean",
+      "category": "orthographic-plan",
+      "note": "CONTROL CASE. Crisp CAD floor plan, 35ft x 30ft, dimension strings on all four sides, single storey, no windows drawn. Should score near-perfect. If it does not, the problem is the prompt or schema rather than model vision, and switching models will not help. Door count is 9 swing arcs by visual inspection \u2014 verify before trusting a failure. The MEASURED DRAWING ruleset tells the model to add a roof only if the drawing shows one, and a bare floor plan does not, so has_roof is skipped here \u2014 scoring it inverts the signal, marking the run that obeyed the prompt a failure and the runs that invented a roof a pass.",
+      "images": [
+        "cad-plan-clean.jpg"
+      ],
+      "scaleHint": "Overall footprint is 35 feet by 30 feet",
+      "expect": {
+        "floors": 1,
+        "doors": 9,
+        "windows": 0,
+        "footprintMeters": [
+          10.7,
+          9.1
+        ]
+      },
+      "skipChecks": [
+        "has_roof"
+      ]
+    },
+    {
+      "id": "l-shaped-plan",
+      "category": "orthographic-plan",
+      "note": "Irregular footprint: utility bay projects at the top, entrance lobby at the lower left, stair block upper left. Targets the 'do not default to a rectangle' failure. Window (W) and ventilator (V) symbols are hard to tell apart, so no opening counts are asserted. The MEASURED DRAWING ruleset tells the model to add a roof only if the drawing shows one, and a bare floor plan does not, so has_roof is skipped here \u2014 scoring it inverts the signal, marking the run that obeyed the prompt a failure and the runs that invented a roof a pass.",
+      "images": [
+        "l-shaped-plan.jpg"
+      ],
+      "scaleHint": null,
+      "expect": {
+        "floors": 1
+      },
+      "skipChecks": [
+        "has_roof"
+      ]
+    },
+    {
+      "id": "hand-sketch",
+      "category": "sketch",
+      "note": "Historical ink drawing: front elevation above, floor plan below, with a semicircular apse. Tests tolerance for imprecise linework, a curved wall, and a large expanse of blank paper. STOREY COUNT IS AMBIGUOUS BY DESIGN: the main body is a single storey, but the elevation shows a columned belvedere raised above the roof balustrade and the plan draws a staircase serving it, so both 1 and 2 are defensible readings. It asserts a range rather than an exact count \u2014 an exact assertion here scores the ambiguity instead of the model.",
+      "images": [
+        "hand-sketch.jpg"
+      ],
+      "scaleHint": null,
+      "expect": {
+        "floorsRange": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "exterior-front",
+      "category": "photo-single",
+      "note": "Comly Rich House, straight-on colour photograph. Two storeys plus an attic half-storey under the gable. Only floors are asserted: the front facade shows 1 door and 5 windows, but a PICTORIAL input is supposed to infer the complete building including rear and side openings it cannot see, so an exact opening count against the visible facade would penalise correct behaviour. Ground truth for massing is corroborated by the measured-elevations fixture, the same building.",
+      "images": [
+        "exterior-front.jpg"
+      ],
+      "scaleHint": null,
+      "expect": {
+        "floors": 2
+      }
+    },
+    {
+      "id": "measured-elevations",
+      "category": "orthographic-elevation",
+      "note": "HABS measured drawing of the SAME house as exterior-front: front, rear, and both side elevations on one sheet with a scale bar. Results should broadly agree with exterior-front \u2014 a large divergence between the two means the model is reading the drawing and the photograph differently.",
+      "images": [
+        "measured-elevations.jpg"
+      ],
+      "scaleHint": null,
+      "expect": {
+        "floors": 2
+      }
+    },
+    {
+      "id": "exterior-multi",
+      "category": "photo-multi",
+      "note": "Mathais Hamm House from four angles: oblique from northeast, front elevation, south facade with a long columned porch, and the west rear showing building depth. Tests whether cross-referencing several views improves depth and footprint, or degrades it. Ornate Italianate massing with dormers and a cupola makes exact counts unreliable, so none are asserted.",
+      "images": [
+        "exterior-multi-1.jpg",
+        "exterior-multi-2.jpg",
+        "exterior-multi-3.jpg",
+        "exterior-multi-4.jpg"
+      ],
+      "scaleHint": null,
+      "expect": null
+    },
+    {
+      "id": "adversarial-interior",
+      "category": "adversarial",
+      "note": "An interior wall hung with picture frames. There is no architectural structure to extract. A pass means returning almost nothing rather than hallucinating a complete building.",
+      "images": [
+        "adversarial-interior.jpg"
+      ],
+      "scaleHint": null,
+      "expect": {
+        "maxElements": 4
+      },
+      "skipChecks": [
+        "wall_loop_closure",
+        "has_roof",
+        "level_has_slab",
+        "multistory_has_stair"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,8 @@
+import {
+  AI_MODEL_OPTIONS,
+  type AllowedModel,
+  DEFAULT_MODEL,
+} from "../../server/aiConfig";
 import { type BimElement, type BimElementType, DEFAULT_PARAMS } from "../types";
 
 const SUPPORTED_TYPES: BimElementType[] = [
@@ -30,15 +35,72 @@ function fileToBase64(
   });
 }
 
+/** Wall corners closer than this are treated as the same point. */
+const JOIN_TOLERANCE = 0.1;
+
+/**
+ * Snaps near-coincident wall endpoints onto a shared point, per level.
+ *
+ * Models place corners within a few centimetres but almost never emit
+ * byte-identical coordinates, which leaves rooms unenclosed and defeats the
+ * wall-join and opening logic downstream. Snapping is deterministic and far
+ * more reliable than asking the model for exact matching floats — the same
+ * reasoning behind deriving door rotation from the host wall rather than
+ * trusting the value the model supplied.
+ */
+export function snapWallEndpoints(walls: BimElement[]): number {
+  const ends = walls.flatMap((w) => [
+    { point: w.start, level: w.level },
+    { point: w.end, level: w.level },
+  ]);
+  const assigned = new Array<boolean>(ends.length).fill(false);
+  let moved = 0;
+
+  for (let i = 0; i < ends.length; i++) {
+    if (assigned[i]) continue;
+    assigned[i] = true;
+    const cluster = [i];
+
+    for (let j = i + 1; j < ends.length; j++) {
+      if (assigned[j] || ends[j].level !== ends[i].level) continue;
+      const gap = Math.hypot(
+        ends[j].point.x - ends[i].point.x,
+        ends[j].point.z - ends[i].point.z,
+      );
+      if (gap <= JOIN_TOLERANCE) {
+        assigned[j] = true;
+        cluster.push(j);
+      }
+    }
+    if (cluster.length < 2) continue;
+
+    const cx =
+      cluster.reduce((t, k) => t + ends[k].point.x, 0) / cluster.length;
+    const cz =
+      cluster.reduce((t, k) => t + ends[k].point.z, 0) / cluster.length;
+    for (const k of cluster) {
+      if (ends[k].point.x !== cx || ends[k].point.z !== cz) moved++;
+      ends[k].point.x = cx;
+      ends[k].point.z = cz;
+    }
+  }
+  return moved;
+}
+
 function computeWallAngle(wall: BimElement): number {
   const dx = wall.end.x - wall.start.x;
   const dz = wall.end.z - wall.start.z;
   return Math.atan2(dz, dx);
 }
 
-function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
+function validateAndFixElements(raw: Record<string, unknown>[]): {
+  elements: BimElement[];
+  warnings: string[];
+} {
   const idMap = new Map<string, string>();
   const elements: BimElement[] = [];
+  const orphanedOpenings: string[] = [];
+  const unsupportedTypes = new Set<string>();
 
   // First pass: create walls with fresh UUIDs
   for (const item of raw) {
@@ -66,6 +128,10 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
     });
   }
 
+  // Snap before openings are placed: door rotation is derived from the host
+  // wall's angle, so the walls must be in final position first.
+  const snappedEndpoints = snapWallEndpoints(elements);
+
   // Second pass: doors and windows with hostWallId remapping
   for (const item of raw) {
     const type = item.type as string;
@@ -75,7 +141,10 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
     const oldHostId = item.hostWallId as string | undefined;
     const hostWallId = oldHostId ? idMap.get(oldHostId) : undefined;
 
-    if (!hostWallId) continue;
+    if (!hostWallId) {
+      orphanedOpenings.push(type);
+      continue;
+    }
 
     const hostWall = elements.find((el) => el.id === hostWallId);
     const position = validatePoint(item.start);
@@ -125,7 +194,10 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
   // Third pass: structural and other elements (column, slab, roof, stair, ceiling, beam)
   for (const item of raw) {
     const type = item.type as string;
-    if (!SUPPORTED_TYPES.includes(type as BimElementType)) continue;
+    if (!SUPPORTED_TYPES.includes(type as BimElementType)) {
+      if (type) unsupportedTypes.add(type);
+      continue;
+    }
     if (type === "wall" || type === "door" || type === "window") continue;
 
     const oldId = item.id as string;
@@ -237,7 +309,75 @@ function validateAndFixElements(raw: Record<string, unknown>[]): BimElement[] {
     }
   }
 
-  return elements;
+  const warnings: string[] = [];
+  if (snappedEndpoints > 0) {
+    warnings.push(
+      `Closed ${snappedEndpoints} wall corner${snappedEndpoints !== 1 ? "s" : ""} that the model left with a small gap.`,
+    );
+  }
+  if (orphanedOpenings.length > 0) {
+    const doors = orphanedOpenings.filter((t) => t === "door").length;
+    const windows = orphanedOpenings.length - doors;
+    const parts: string[] = [];
+    if (doors > 0) parts.push(`${doors} door${doors !== 1 ? "s" : ""}`);
+    if (windows > 0) parts.push(`${windows} window${windows !== 1 ? "s" : ""}`);
+    warnings.push(
+      `Discarded ${parts.join(" and ")} that referenced a wall the model never generated.`,
+    );
+  }
+  if (unsupportedTypes.size > 0) {
+    warnings.push(
+      `Ignored unsupported element type${unsupportedTypes.size !== 1 ? "s" : ""}: ${Array.from(unsupportedTypes).join(", ")}.`,
+    );
+  }
+
+  return { elements, warnings };
+}
+
+/**
+ * Recovers the complete leading elements from a response cut off mid-array.
+ *
+ * A single runaway number is enough to truncate an otherwise good building, and
+ * without this the whole response is discarded — the user sees "AI did not
+ * return valid JSON" and loses dozens of perfectly good elements.
+ */
+export function salvageTruncatedElements(text: string): unknown[] | null {
+  const arrayStart = text.indexOf("[");
+  if (arrayStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let lastComplete = -1;
+
+  for (let i = arrayStart + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+    } else if (ch === "\\") {
+      escaped = true;
+    } else if (ch === '"') {
+      inString = !inString;
+    } else if (!inString) {
+      if (ch === "{" || ch === "[") {
+        depth++;
+      } else if (ch === "}" || ch === "]") {
+        depth--;
+        if (depth === 0) lastComplete = i;
+        if (depth < 0) break;
+      }
+    }
+  }
+
+  if (lastComplete === -1) return null;
+  try {
+    const recovered: unknown = JSON.parse(
+      `${text.slice(arrayStart, lastComplete + 1)}]`,
+    );
+    return Array.isArray(recovered) ? recovered : null;
+  } catch {
+    return null;
+  }
 }
 
 function validatePoint(point: unknown): { x: number; z: number } {
@@ -258,6 +398,7 @@ function asNumber(value: unknown, fallback: number): number {
 
 export interface AiGenerateResult {
   elements: BimElement[];
+  warnings: string[];
   wallCount: number;
   doorCount: number;
   windowCount: number;
@@ -270,12 +411,9 @@ export interface AiGenerateResult {
   levelCount: number;
 }
 
-export type AiModelId = "claude-opus-4-20250514" | "claude-sonnet-4-20250514";
+export type AiModelId = AllowedModel;
 
-export const AI_MODELS: { id: AiModelId; label: string }[] = [
-  { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
-  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-];
+export const AI_MODELS: { id: AiModelId; label: string }[] = AI_MODEL_OPTIONS;
 
 export async function generateFloorPlan(
   apiKey: string,
@@ -295,7 +433,7 @@ export async function generateFloorPlan(
         mediaType,
       })),
       scaleHint: scaleHint || undefined,
-      model: model || "claude-opus-4-20250514",
+      model: model || DEFAULT_MODEL,
     }),
   });
 
@@ -314,6 +452,9 @@ export async function generateFloorPlan(
       .replace(/\n?```\s*$/, "");
   }
 
+  const responseWarnings: string[] = [];
+  const stopReason = json.stopReason as string | undefined;
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
@@ -329,10 +470,28 @@ export async function generateFloorPlan(
     }
 
     if (parsed === undefined) {
+      const recovered = salvageTruncatedElements(jsonText);
+      if (recovered && recovered.length > 0) {
+        parsed = recovered;
+        responseWarnings.push(
+          `The response was cut off before it finished${
+            stopReason === "max_tokens" ? " (hit the output limit)" : ""
+          }. Recovered ${recovered.length} complete elements — the building is probably incomplete.`,
+        );
+      }
+    }
+
+    if (parsed === undefined) {
       const preview =
         jsonText.length > 200 ? `${jsonText.slice(0, 200)}…` : jsonText;
       throw new Error(`AI did not return valid JSON. Response: "${preview}"`);
     }
+  }
+
+  if (stopReason === "max_tokens" && responseWarnings.length === 0) {
+    responseWarnings.push(
+      "The response hit the output limit. Some of the building may be missing.",
+    );
   }
 
   if (!Array.isArray(parsed)) {
@@ -359,7 +518,7 @@ export async function generateFloorPlan(
     );
   }
 
-  const elements = validateAndFixElements(
+  const { elements, warnings } = validateAndFixElements(
     parsedArray as Record<string, unknown>[],
   );
 
@@ -373,6 +532,7 @@ export async function generateFloorPlan(
 
   return {
     elements,
+    warnings: [...responseWarnings, ...warnings],
     wallCount: elements.filter((e) => e.type === "wall").length,
     doorCount: elements.filter((e) => e.type === "door").length,
     windowCount: elements.filter((e) => e.type === "window").length,

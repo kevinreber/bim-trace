@@ -15,13 +15,21 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 
 ## Environment Variables
 Copy `.env.example` to `.env` and fill in the values:
-- `ANTHROPIC_API_KEY` — Optional fallback for the AI Image to BIM feature. Users provide their own key via the UI (BYOK pattern). Only needed if you want a default key. Get a key at https://console.anthropic.com/settings/keys
+- `ANTHROPIC_API_KEY` — Optional fallback for the AI Image to BIM feature. Users provide their own key via the UI (BYOK pattern). Only needed if you want a default key locally. Get a key at https://console.anthropic.com/settings/keys
+- `ALLOW_SHARED_API_KEY` — Set to exactly `"true"` to let `ANTHROPIC_API_KEY` serve as the fallback **in production**. It is ignored there by default: the generation endpoint is unauthenticated, so a shared key lets anyone who finds the URL spend your credits at roughly $0.85 a request. Only opt in behind access control. See `resolveApiKey()` in `server/aiConfig.ts`.
 
 ## Commands
 - `npm run dev` — Start dev server
 - `npm run build` — Production build
 - `npx @biomejs/biome check src/` — Lint and format check
 - `npx @biomejs/biome check --write src/` — Auto-fix lint/format issues
+- `npm run eval:run` — Capture AI generation responses for the eval fixtures (needs `npm run dev` running)
+- `npm run eval:score` — Score the newest captured eval run
+- `npm run eval:selftest` — Verify the eval checks themselves still fire
+- `npm test` — Vitest unit suite (geometry, salvage parsing, request validation)
+- `npm run test:watch` — Vitest in watch mode
+- `npm run test:e2e` — Playwright end-to-end suite (starts the dev server itself)
+- `npm run test:e2e:ui` — Same suite in Playwright's interactive UI mode
 
 ## Key Architecture
 
@@ -47,6 +55,7 @@ Copy `.env.example` to `.env` and fill in the values:
 - **`src/types.ts`** — All BIM element types (BimElementType, BimElementParams, DEFAULT_PARAMS)
 - **`src/globals.css`** — Revit-inspired theme with CSS custom properties and ribbon/panel styles
 - **`server/prompt.ts`** — Shared AI system prompt for floor plan generation
+- **`server/aiConfig.ts`** — Shared request config for both proxies: allowed models, default model, `BIM_OUTPUT_SCHEMA` (structured-output JSON schema), `buildUserText()`; also the source of the client-side model dropdown so the two paths cannot drift
 - **`server/apiProxy.ts`** — Vite dev server plugin that proxies `/api/generate-floor-plan` to Anthropic API (keeps API key server-side)
 - **`api/generate-floor-plan.ts`** — Vercel serverless edge function for the same endpoint in production
 
@@ -81,8 +90,31 @@ Copy `.env.example` to `.env` and fill in the values:
 - **`src/components/CreationToolbar.tsx`** — Legacy creation toolbar (replaced by RibbonToolbar)
 
 ### AI Services
-- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with extended thinking and multi-image support
+- **`src/services/aiFloorPlanService.ts`** — Claude API integration for Image-to-BIM generation with adaptive thinking and multi-image support; `validateAndFixElements` returns `{ elements, warnings }` so discarded elements are reported rather than dropped silently
 - **`src/services/aiApiKeyStore.ts`** — Browser-local API key persistence
+
+### AI Request Configuration
+Both `server/apiProxy.ts` (dev) and `api/generate-floor-plan.ts` (production) build an identical request from `server/aiConfig.ts`:
+- Models are Claude 5 (`claude-opus-5` default, `claude-sonnet-5`). **`budget_tokens` is rejected on Claude 5** — use `thinking: { type: "adaptive" }` with `output_config: { effort }` instead.
+- Structured outputs (`output_config.format`) constrain the response to `{ "elements": [...] }`, so the model cannot return prose around the JSON. The API rejects `additionalProperties` as an object and rejects `minimum`/`maximum` on numeric schemas, so `params` enumerates every type's keys explicitly and values cannot be bounded. `numRisers` is typed `integer` because an unbounded number grammar let constrained decoding fall into a runaway literal that consumed the whole token budget.
+- The system prompt classifies the input as a MEASURED DRAWING or a PICTORIAL image before anything else, and applies a different ruleset to each. Drawings are modelled literally — no inferred storeys, no inferred windows. Photographs get the depth-inference guidance. Getting this branch wrong is the single largest source of bad output.
+- Requests are streamed (`.stream().finalMessage()`) because a 32k `max_tokens` on a non-streaming request risks an HTTP timeout.
+- `validateGenerateRequest()` runs before anything touches the body, rejecting a missing or empty `images` array, more than `MAX_IMAGES` (5) images, and unsupported media types with a 400. Both proxies must call it: they read `body.images.length` immediately after, which throws on a malformed body. **The endpoint is unauthenticated**, which is safe under BYOK because every caller spends their own credits. `resolveApiKey()` protects that property: it prefers the caller's key, and ignores the `ANTHROPIC_API_KEY` fallback entirely when `NODE_ENV` or `VERCEL_ENV` is `production` unless `ALLOW_SHARED_API_KEY` is exactly `"true"`. Without that gate a production deploy with a key set is an open paid endpoint at roughly $0.85 a request.
+
+### Evals
+`evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored). Scoring reads only from disk, so re-score after changing a check instead of spending another capture. Where a drawing genuinely admits more than one storey count, the fixture asserts `floorsRange: [min, max]` rather than an exact `floors` — `hand-sketch` has a roof belvedere served by a stair drawn in the plan, so both 1 and 2 are defensible and an exact assertion would score the ambiguity rather than the model.
+
+### Unit tests
+`vitest.config.ts` is standalone rather than extending `vite.config.ts`, because that config registers the API proxy plugin, which pulls in the Anthropic SDK and reads `.env`. Tests live next to their source as `*.test.ts` under `src/` and `server/`; Playwright owns `e2e/` and the two runners do not overlap.
+
+Coverage is deliberately narrow — the pure functions whose failure modes are invisible in the viewport. `computeWallOpenings` (a hole placed wrong renders as a door embedded in solid wall), `snapWallEndpoints` (unsnapped corners leave rooms unenclosed), `salvageTruncatedElements` (a mis-parsed brace silently loses elements), and `resolveApiKey` / `validateGenerateRequest` (both guard an unauthenticated endpoint). All three geometry helpers were mutation-checked: breaking the tolerance or the string walker fails the matching test rather than passing quietly.
+
+### End-to-end tests
+`e2e/` holds the Playwright suite; `playwright.config.ts` starts `npm run dev` automatically and reuses an already-running server outside CI. `e2e/smoke.spec.ts` covers the shell — ribbon tab switching, the `Shift+W` / `Escape` / `G` keyboard shortcuts, and the metric/imperial toggle — by driving real state transitions with nothing stubbed.
+
+Two selector traps to know about. `Sidebar.tsx` reuses the `.status-bar` class for its own footer, so tests scope to the application status bar by filtering on the `Level:` readout. Ribbon tab and tool names collide with button labels elsewhere in the app, so tab queries are scoped to `.ribbon-tabs` and tool queries to `.ribbon-panel`.
+
+Biome only lints `src/`, so `e2e/` and `playwright.config.ts` are outside the lint scope but are still type-checked by `tsc -b` during `npm run build`.
 
 ## Documentation Policy
 **Every commit MUST include documentation updates for all affected docs.**
@@ -118,7 +150,7 @@ When releasing a version:
 1. Add the type to `BimElementType` union in `src/types.ts`
 2. Add params interface to `BimElementParams` in `src/types.ts`
 3. Add defaults to `DEFAULT_PARAMS` in `src/types.ts`
-4. Add material to `ELEMENT_MATERIALS` in `geometryBuilders.ts`
+4. Add the default material to `DEFAULT_ELEMENT_MATERIAL` in `src/types.ts` (the materials themselves live in `MATERIAL_LIBRARY` in `geometryBuilders.ts`)
 5. Create `buildXxxMesh()` geometry builder in `geometryBuilders.ts`
 6. Add case to `buildMeshForElement()` switch in `geometryBuilders.ts`
 7. Add ghost preview case in `updateGhostPreview()` in `Viewer3D.tsx`
@@ -134,6 +166,8 @@ When a door or window is hosted on a wall (`hostWallId`), the wall geometry auto
 - Projects each opening's position onto the wall centerline
 - `buildWallMesh()` uses `THREE.Shape` with holes + `ExtrudeGeometry` instead of `BoxGeometry`
 - Openings are recalculated on every scene sync (when `bimElements` changes)
+
+Two guards keep a bad `hostWallId` from cutting a hole in the wrong place. An opening further than `thickness + 0.1` off the wall centerline is discarded outright, since it names this wall but sits somewhere else. Along the wall axis the rule is deliberately forgiving: a door hard against a corner legitimately overhangs the centerline by a few centimetres (the eval corpus shows 4–10cm on otherwise correct doors, and `computeWallJoins` extends the drawn wall past that length anyway), so an overhang within `max(thickness, 0.15)` is nudged back inside the span rather than rejected. Only an opening that misses the wall by more than that, or is wider than the wall, is dropped. `evals/checks.mjs` mirrors this tolerance in `opening_within_span` — if you change one, change both, or the eval will report failures the renderer handles fine.
 
 ## Element Selection
 - **3D click**: Raycast through scene meshes; prefers doors/windows over host walls within 0.3m tolerance

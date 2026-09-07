@@ -19,6 +19,8 @@ Most BIM tools are too heavy for quick reviews, and most PDF tools lack 3D conte
 | **AI** | **Anthropic Claude API** | Image-to-BIM generation |
 | **Styling** | **Tailwind CSS** | Utility-first CSS framework |
 | **Linting** | **Biome** | Lint & format |
+| **Testing** | **Vitest + Playwright** | Unit suite and end-to-end suite |
+| **Persistence** | **IndexedDB** | Local auto-save of the workspace |
 
 ---
 
@@ -45,29 +47,60 @@ Most BIM tools are too heavy for quick reviews, and most PDF tools lack 3D conte
 
 ## 🏗️ Build Plan
 
-### Phase 1: Environment Setup & 3D Core
-- [ ] Initialize Next.js with Tailwind CSS and TypeScript.
-- [ ] Integrate `@thatopen/components` (IFC.js) to render a basic 3D scene.
-- [ ] Create a "Drag & Drop" zone for `.ifc` files.
+See `ROADMAP.md` for the full feature tracker. This is the high-level arc.
 
-### Phase 2: 2D Markup Engine
-- [ ] Implement `PDF.js` viewer component.
-- [ ] Layer `Fabric.js` on top of the PDF canvas.
-- [ ] Create tools for drawing "Clouds" and "Callouts" with persistent coordinate data.
+### Phase 1: Environment Setup & 3D Core — done
+- [x] Initialize Vite with React 18, Tailwind CSS, and TypeScript.
+- [x] Integrate `@thatopen/components` (IFC.js) to render a basic 3D scene.
+- [x] Create a "Drag & Drop" zone for `.ifc` files.
 
-### Phase 3: Supabase Integration
+### Phase 2: 2D Markup Engine — done
+- [x] Implement `PDF.js` viewer component.
+- [x] Layer `Fabric.js` on top of the PDF canvas.
+- [x] Create tools for drawing "Clouds" and "Callouts" with persistent coordinate data.
+
+### Phase 3: Persistence & Backend — partly done
+- [x] Save/Load the current workspace state (auto-saved to IndexedDB in the browser).
 - [ ] Setup Supabase project and apply the `markups` and `projects` schema.
-- [ ] Implement Save/Load functionality for current workspace state.
 - [ ] Add User Authentication for private project management.
 
 ### Phase 4: Export & Polish
 - [ ] **Export to PDF:** Generate a summary report of all issues.
 - [ ] **Export to BCF:** Support BIM Collaboration Format for round-tripping back to Revit.
-- [ ] UI/UX polish for "Split-Pane" navigation.
+- [x] UI/UX polish for "Split-Pane" navigation (1/2/3/4-up viewport layouts).
 
 ---
 
-## 🗄️ Database Schema (Supabase/PostgreSQL)
+## 🚀 Getting Started
+
+```bash
+npm install
+cp .env.example .env     # optional: ANTHROPIC_API_KEY fallback for Image-to-BIM
+npm run dev
+```
+
+The AI Image-to-BIM feature is bring-your-own-key: paste an Anthropic key into
+the modal and it is kept in browser storage and sent per request to a
+server-side proxy, so it never appears in the bundle. `ANTHROPIC_API_KEY` is
+only a fallback for when no user key is supplied, and it is **ignored in
+production** — the generation endpoint has no authentication, so a shared key
+on a public deployment would let anyone who finds the URL spend your credits at
+roughly $0.85 per request. Set `ALLOW_SHARED_API_KEY=true` to override that, and
+only behind access control.
+
+| Command | Purpose |
+| :--- | :--- |
+| `npm run dev` | Dev server |
+| `npm run build` | Production build (type-check + bundle) |
+| `npm run lint` | Biome lint & format check |
+| `npm test` | Vitest unit suite |
+| `npm run test:e2e` | Playwright end-to-end suite (starts the dev server itself) |
+| `npm run eval:score` | Score captured AI-generation eval runs (reads from disk, free) |
+| `npm run eval:run` | Capture new eval responses — **spends Anthropic credits** |
+
+---
+
+## 🗄️ Database Schema (Supabase/PostgreSQL — planned)
 
 ```sql
 -- Tables for BIM Trace

@@ -25,3 +25,13 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# eval captures
+/evals/runs
+
+# direnv
+.envrc
+
+# playwright
+/test-results
+/playwright-report
