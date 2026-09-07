@@ -127,6 +127,52 @@ function scoreExpectations(expect, stats) {
     });
   }
 
+  // Shape, not just extents. `footprintMeters` is a bounding box, so an
+  // L-shaped plan and a plain box with the same extents scored identically and
+  // "the model defaulted to a rectangle" was unmeasurable.
+  const shape = expect.footprintShape;
+  if (shape && stats.footprintCorners != null) {
+    if (typeof shape.minCorners === "number") {
+      out.push({
+        label: "footprint corners",
+        actual: stats.footprintCorners,
+        wanted: `>= ${shape.minCorners}`,
+        pass: stats.footprintCorners >= shape.minCorners,
+      });
+    }
+    if (typeof shape.maxCorners === "number") {
+      out.push({
+        label: "footprint corners",
+        actual: stats.footprintCorners,
+        wanted: `<= ${shape.maxCorners}`,
+        pass: stats.footprintCorners <= shape.maxCorners,
+      });
+    }
+    if (typeof shape.maxFill === "number") {
+      out.push({
+        label: "footprint fill",
+        actual: stats.footprintFill,
+        wanted: `<= ${shape.maxFill}`,
+        pass: stats.footprintFill <= shape.maxFill,
+      });
+    }
+    if (typeof shape.minFill === "number") {
+      out.push({
+        label: "footprint fill",
+        actual: stats.footprintFill,
+        wanted: `>= ${shape.minFill}`,
+        pass: stats.footprintFill >= shape.minFill,
+      });
+    }
+  } else if (shape) {
+    out.push({
+      label: "footprint shape",
+      actual: "no traceable outline",
+      wanted: "a closed ground-floor outline",
+      pass: false,
+    });
+  }
+
   if (Array.isArray(expect.footprintMeters) && stats.footprint) {
     const within = expect.footprintMeters.every((wanted, i) => {
       const actual = stats.footprint[i];

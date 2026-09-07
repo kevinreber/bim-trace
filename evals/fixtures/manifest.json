@@ -16,7 +16,11 @@
         "footprintMeters": [
           10.7,
           9.1
-        ]
+        ],
+        "footprintShape": {
+          "maxCorners": 6,
+          "minFill": 0.9
+        }
       },
       "skipChecks": [
         "has_roof"
@@ -31,7 +35,11 @@
       ],
       "scaleHint": null,
       "expect": {
-        "floors": 1
+        "floors": 1,
+        "footprintShape": {
+          "minCorners": 6,
+          "maxFill": 0.95
+        }
       },
       "skipChecks": [
         "has_roof"

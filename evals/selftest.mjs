@@ -52,6 +52,10 @@ const CLEAN = [
 
 const BROKEN = [
   wall(1, 0, 0, 6, 0), wall(2, 6, 0, 6, 5),
+  // A third ground wall so the footprint walk has something to attempt: these
+  // three form an open U that encloses nothing, which is what
+  // footprint_traceable exists to catch.
+  wall(3, 6, 5, 3, 5),
   // A wall on an upper storey, so the building is genuinely multi-storey and
   // the stair check is exercised. Storeys are counted from walls, so a fixture
   // whose only upper-level element is an opening would not trigger it.
@@ -68,6 +72,7 @@ const EXPECTED_TO_FAIL = [
   "host_resolution", "host_level_match", "opening_on_wall",
   "opening_within_span", "opening_no_overlap", "wall_loop_closure",
   "level_has_slab", "multistory_has_stair", "has_roof",
+  "footprint_traceable",
 ];
 
 const problems = [];
@@ -78,6 +83,30 @@ for (const c of cleanResult.checks) {
 }
 if (cleanResult.stats.walls !== 5 || cleanResult.stats.levels !== 1) {
   problems.push(`clean stats wrong: ${JSON.stringify(cleanResult.stats)}`);
+}
+// The clean fixture is a 10x8 rectangle with one interior partition, so the
+// outline walk must find four corners and fill its bounding box. Asserting the
+// numbers rather than only "did not fail" is what makes the shape stats
+// trustworthy — a walk that silently returned null would pass the checks.
+if (cleanResult.stats.footprintCorners !== 4) {
+  problems.push(`clean footprint should have 4 corners, got ${cleanResult.stats.footprintCorners}`);
+}
+if (cleanResult.stats.footprintFill !== 1) {
+  problems.push(`clean footprint should fill its bounding box, got ${cleanResult.stats.footprintFill}`);
+}
+
+// An L-shaped outline must read as articulated, or the metric cannot tell a
+// rectangle from a plan the model was supposed to reproduce faithfully.
+const L_SHAPED = [
+  wall(1, 0, 0, 6, 0), wall(2, 6, 0, 6, 3), wall(3, 6, 3, 3, 3),
+  wall(4, 3, 3, 3, 6), wall(5, 3, 6, 0, 6), wall(6, 0, 6, 0, 0),
+];
+const lResult = runChecks(L_SHAPED);
+if (lResult.stats.footprintCorners !== 6) {
+  problems.push(`L-shape should have 6 corners, got ${lResult.stats.footprintCorners}`);
+}
+if (!(lResult.stats.footprintFill < 0.9)) {
+  problems.push(`L-shape should not fill its bounding box, got ${lResult.stats.footprintFill}`);
 }
 
 const brokenResult = runChecks(BROKEN);

@@ -50,6 +50,108 @@ function distanceToSegment(p, a, b) {
   return Math.hypot(num(p?.x) - (num(a?.x) + t * dx), num(p?.z) - (num(a?.z) + t * dz));
 }
 
+
+const FOOTPRINT_TOL = 0.15;
+const vertexKey = (p) =>
+  `${Math.round(num(p?.x) / FOOTPRINT_TOL)}:${Math.round(num(p?.z) / FOOTPRINT_TOL)}`;
+
+/**
+ * Traces the outer outline of a level's walls.
+ *
+ * The bounding box says nothing about shape: an L-shaped plan and a plain box
+ * with the same extents score identically on `footprintMeters`, so "the model
+ * defaulted to a rectangle" — the exact failure `l-shaped-plan` was added to
+ * catch — was invisible. Walking the outline gives the corner count and the
+ * enclosed area, which do distinguish them.
+ *
+ * Starts at the lowest-then-leftmost vertex, which is always on the outer
+ * boundary, and at each step takes the most clockwise turn available, which
+ * keeps the walk hugging the outside and ignores interior partitions.
+ */
+function outerBoundary(walls) {
+  const verts = new Map();
+  const adj = new Map();
+  const add = (p) => {
+    const k = vertexKey(p);
+    if (!verts.has(k)) {
+      verts.set(k, { x: num(p?.x), z: num(p?.z) });
+      adj.set(k, new Set());
+    }
+    return k;
+  };
+  for (const w of walls) {
+    const a = add(w.start);
+    const b = add(w.end);
+    if (a === b) continue;
+    adj.get(a).add(b);
+    adj.get(b).add(a);
+  }
+  if (verts.size < 3) return null;
+
+  let startK = null;
+  for (const [k, v] of verts) {
+    if (startK === null) { startK = k; continue; }
+    const s = verts.get(startK);
+    if (v.z < s.z || (v.z === s.z && v.x < s.x)) startK = k;
+  }
+
+  const poly = [];
+  let prevK = null;
+  let curK = startK;
+  let guard = verts.size * 4;
+  do {
+    poly.push(verts.get(curK));
+    const cur = verts.get(curK);
+    // On the first step, pretend we arrived travelling -X so the walk sets off
+    // around the outside rather than into the building.
+    const inDir = prevK
+      ? Math.atan2(cur.z - verts.get(prevK).z, cur.x - verts.get(prevK).x)
+      : Math.PI;
+    let bestK = null;
+    let bestTurn = Infinity;
+    for (const nK of adj.get(curK)) {
+      // Backtracking is allowed only from a dead end, where it is the sole way on.
+      if (nK === prevK && adj.get(curK).size > 1) continue;
+      const n = verts.get(nK);
+      const out = Math.atan2(n.z - cur.z, n.x - cur.x);
+      let turn = out - (inDir + Math.PI);
+      while (turn <= 0) turn += Math.PI * 2;
+      while (turn > Math.PI * 2) turn -= Math.PI * 2;
+      if (turn < bestTurn) { bestTurn = turn; bestK = nK; }
+    }
+    if (!bestK) return null;
+    prevK = curK;
+    curK = bestK;
+  } while (curK !== startK && guard-- > 0);
+
+  return guard > 0 && poly.length >= 3 ? poly : null;
+}
+
+function polygonArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return Math.abs(a) / 2;
+}
+
+/** Only vertices that actually turn, so collinear points do not inflate the count. */
+function cornerCount(poly) {
+  let corners = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[(i - 1 + poly.length) % poly.length];
+    const b = poly[i];
+    const c = poly[(i + 1) % poly.length];
+    const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
+    const len =
+      Math.hypot(b.x - a.x, b.z - a.z) * Math.hypot(c.x - b.x, c.z - b.z);
+    if (len > 0 && Math.abs(cross / len) > 0.05) corners++;
+  }
+  return corners;
+}
+
 function bbox(points) {
   if (points.length === 0) return null;
   const xs = points.map((p) => num(p.x));
@@ -221,6 +323,30 @@ export function runChecks(elements) {
   check("finite_coordinates", nonFinite, elements.length, (e) =>
     `${e.id} has a non-finite coordinate`);
 
+  // Shape, not just extents. The ground-floor outline is the one that says
+  // whether the model reproduced an articulated footprint or fell back to a box.
+  const groundWalls = levels.length
+    ? walls.filter((w) => num(w.level) === levels[0])
+    : walls;
+  // A walk that returns to its start having enclosed nothing — two walls in an
+  // L, traced out and back — is not an outline. Without the area floor the
+  // check passed on walls that enclose no building at all.
+  const traced = outerBoundary(groundWalls);
+  const tracedArea = traced ? polygonArea(traced) : 0;
+  const outline = tracedArea >= 1 ? traced : null;
+  const outlineArea = outline ? tracedArea : null;
+  const outlineBox = bbox(groundWalls.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
+  const outlineBoxArea = outlineBox
+    ? (outlineBox.maxX - outlineBox.minX) * (outlineBox.maxZ - outlineBox.minZ)
+    : null;
+
+  // A footprint whose outline cannot be walked has walls that do not enclose
+  // anything, which wall_loop_closure can miss when every endpoint touches
+  // something but the pieces never form a ring.
+  const untraceable = groundWalls.length >= 3 && !outline ? ["outline"] : [];
+  check("footprint_traceable", untraceable, 1, () =>
+    "ground-floor walls do not trace a closed outline");
+
   const wallBox = bbox(walls.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
 
   return {
@@ -235,6 +361,12 @@ export function runChecks(elements) {
       stairs: stairs.length,
       columns: of(elements, "column").length,
       levels: levels.length,
+      footprintCorners: outline ? cornerCount(outline) : null,
+      footprintArea: outlineArea == null ? null : Number(outlineArea.toFixed(1)),
+      footprintFill:
+        outlineArea != null && outlineBoxArea
+          ? Number((outlineArea / outlineBoxArea).toFixed(2))
+          : null,
       footprint: wallBox
         ? [
             Number((wallBox.maxX - wallBox.minX).toFixed(2)),
@@ -258,4 +390,5 @@ export const CHECK_IDS = [
   "has_roof",
   "no_origin_cluster",
   "finite_coordinates",
+  "footprint_traceable",
 ];
