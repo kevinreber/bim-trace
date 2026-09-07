@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALLOWED_FORMATS_LABEL,
+  ALLOWED_MEDIA_TYPES,
   MAX_IMAGES,
   resolveApiKey,
   resolveModel,
@@ -133,5 +135,31 @@ describe("validateGenerateRequest", () => {
     expect(validateGenerateRequest({ images: ["not-an-object"] })).toMatch(
       /must be an object with/,
     );
+  });
+});
+
+/**
+ * The upload UI derives its `accept` list, its hint text, and its runtime check
+ * from these, so a drift here is a drift in what users are told.
+ */
+describe("ALLOWED_FORMATS_LABEL", () => {
+  it("names every accepted media type", () => {
+    expect(ALLOWED_FORMATS_LABEL).toBe("PNG, JPEG, WEBP, GIF");
+  });
+
+  it("stays derived from the media type list", () => {
+    for (const type of ALLOWED_MEDIA_TYPES) {
+      expect(ALLOWED_FORMATS_LABEL).toContain(
+        type.replace("image/", "").toUpperCase(),
+      );
+    }
+  });
+
+  // HEIC is the iPhone default and is not supported, so it must not slip
+  // through as an `image/*` type the way it did before.
+  it("does not claim support for HEIC", () => {
+    expect(validateGenerateRequest({
+      images: [{ imageBase64: "abc", mediaType: "image/heic" }],
+    })).toMatch(/Unsupported mediaType/);
   });
 });

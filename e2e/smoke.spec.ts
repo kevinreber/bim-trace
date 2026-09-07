@@ -66,3 +66,34 @@ test("the status bar unit toggle switches between metric and imperial", async ({
   await toggle.click();
   await expect(toggle).toHaveText("m");
 });
+
+/**
+ * The supported formats are stated in three places that used to disagree: the
+ * dropzone hint, the file picker's `accept` list, and the runtime check. All
+ * three now derive from ALLOWED_MEDIA_TYPES, and this pins the two a user can
+ * actually see. Opening the modal costs nothing — no request is made until
+ * Generate is pressed.
+ */
+test("the AI modal states which image formats it accepts", async ({ page }) => {
+  await ribbonTab(page, "Architecture").click();
+  await page
+    .locator(".ribbon-panel")
+    .getByRole("button", { name: /Image\s*to BIM/ })
+    .click();
+
+  const modal = page.locator(".ai-modal-content");
+  await expect(modal).toBeVisible();
+
+  const hint = modal.locator(".ai-modal-file-hint");
+  await expect(hint).toContainText("PNG");
+  await expect(hint).toContainText("JPEG");
+  await expect(hint).toContainText("WEBP");
+  await expect(hint).toContainText("GIF");
+  await expect(hint).toContainText("20MB");
+
+  // The picker must offer the same set the endpoint accepts, GIF included.
+  await expect(modal.locator('input[type="file"]')).toHaveAttribute(
+    "accept",
+    "image/png,image/jpeg,image/webp,image/gif",
+  );
+});

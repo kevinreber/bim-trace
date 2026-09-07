@@ -61,12 +61,23 @@ export function resolveApiKey(
   return env.ANTHROPIC_API_KEY;
 }
 
-const ALLOWED_MEDIA_TYPES = [
+/**
+ * Image formats the Anthropic API accepts. Exported because the upload UI must
+ * gate on the same list the endpoint enforces — when the two drifted, the modal
+ * accepted any `image/*` file and a HEIC photo from an iPhone was only rejected
+ * after the upload, by the server, in terms the user had no way to act on.
+ */
+export const ALLOWED_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
-];
+] as const;
+
+/** The same list as UI copy, derived so it cannot fall out of step. */
+export const ALLOWED_FORMATS_LABEL = ALLOWED_MEDIA_TYPES.map((t) =>
+  t.replace("image/", "").toUpperCase(),
+).join(", ");
 
 /**
  * Validates the request body, returning an error string or null.
@@ -98,7 +109,7 @@ export function validateGenerateRequest(body: unknown): string | null {
     }
     if (
       typeof mediaType !== "string" ||
-      !ALLOWED_MEDIA_TYPES.includes(mediaType)
+      !(ALLOWED_MEDIA_TYPES as readonly string[]).includes(mediaType)
     ) {
       return `Unsupported mediaType. Allowed: ${ALLOWED_MEDIA_TYPES.join(", ")}.`;
     }
