@@ -5,6 +5,7 @@ import {
   EFFORT,
   MAX_TOKENS,
   buildUserText,
+  resolveApiKey,
   resolveModel,
   validateGenerateRequest,
 } from "../server/aiConfig";
@@ -34,7 +35,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const body = (await req.json()) as GenerateRequest;
 
-    const apiKey = body.apiKey || process.env.ANTHROPIC_API_KEY;
+    const apiKey = resolveApiKey(body.apiKey, process.env);
     if (!apiKey) {
       return new Response(
         JSON.stringify({

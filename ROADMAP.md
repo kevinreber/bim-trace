@@ -658,7 +658,8 @@
 ## Technical Debt & Infrastructure (Ongoing)
 
 - [x] **E2E testing** — Playwright smoke suite over the ribbon, status bar, and keyboard shortcuts (`npm run test:e2e`)
-- [ ] **Unit & component testing** — unit tests (Vitest) and component tests (Testing Library)
+- [x] **Unit testing** — Vitest over the pure helpers whose failures are invisible in the viewport (`npm test`)
+- [ ] **Component testing** — Testing Library over the React components
 - [x] **AI generation evals** — `evals/` scores raw model output against a stratified fixture corpus (`npm run eval:run`, `eval:score`, `eval:selftest`)
 - [ ] **CI/CD** — GitHub Actions for lint, type-check, test, build, deploy
 - [ ] **Error tracking** — Sentry integration for runtime errors

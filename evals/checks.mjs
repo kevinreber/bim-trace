@@ -198,9 +198,13 @@ export function runChecks(elements) {
 
   // Coordinates that fell back to the origin are the signature of malformed
   // upstream input, since validatePoint returns {x:0,z:0} for anything unparseable.
+  // Columns are excluded: they legitimately carry start === end, and the prompt
+  // asks for the layout centred on the origin, so a column at the exact centre
+  // of a plan is correct output rather than a parse failure.
   const atOrigin = elements.filter(
     (e) =>
       e?.type !== undefined &&
+      e.type !== "column" &&
       num(e.start?.x) === 0 &&
       num(e.start?.z) === 0 &&
       num(e.end?.x) === 0 &&

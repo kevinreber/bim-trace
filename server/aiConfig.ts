@@ -40,6 +40,27 @@ export function resolveModel(requested: string | undefined): string {
  */
 export const MAX_IMAGES = 5;
 
+/**
+ * Picks the key that will pay for the request.
+ *
+ * The endpoint has no authentication, which is fine under BYOK because every
+ * caller spends their own credits. The `ANTHROPIC_API_KEY` fallback breaks that
+ * property: in production it turns an open endpoint into a paid one that anyone
+ * who finds the URL can drive, at roughly $0.85 a request. So the fallback is a
+ * local convenience only, unless a deployment opts in explicitly by setting
+ * `ALLOW_SHARED_API_KEY=true` — which should only be done behind access control.
+ */
+export function resolveApiKey(
+  userKey: string | undefined,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  if (userKey) return userKey;
+  const isProduction =
+    env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
+  if (isProduction && env.ALLOW_SHARED_API_KEY !== "true") return undefined;
+  return env.ANTHROPIC_API_KEY;
+}
+
 const ALLOWED_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",

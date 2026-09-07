@@ -48,7 +48,7 @@ const JOIN_TOLERANCE = 0.1;
  * reasoning behind deriving door rotation from the host wall rather than
  * trusting the value the model supplied.
  */
-function snapWallEndpoints(walls: BimElement[]): number {
+export function snapWallEndpoints(walls: BimElement[]): number {
   const ends = walls.flatMap((w) => [
     { point: w.start, level: w.level },
     { point: w.end, level: w.level },
@@ -341,7 +341,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
  * without this the whole response is discarded — the user sees "AI did not
  * return valid JSON" and loses dozens of perfectly good elements.
  */
-function salvageTruncatedElements(text: string): unknown[] | null {
+export function salvageTruncatedElements(text: string): unknown[] | null {
   const arrayStart = text.indexOf("[");
   if (arrayStart === -1) return null;
 

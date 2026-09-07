@@ -6,6 +6,7 @@ import {
   EFFORT,
   MAX_TOKENS,
   buildUserText,
+  resolveApiKey,
   resolveModel,
   validateGenerateRequest,
 } from "./aiConfig";
@@ -45,7 +46,7 @@ export function apiProxyPlugin(): Plugin {
         try {
           const body = JSON.parse(await readBody(req)) as GenerateRequest;
 
-          const apiKey = body.apiKey || process.env.ANTHROPIC_API_KEY;
+          const apiKey = resolveApiKey(body.apiKey, process.env);
           if (!apiKey) {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json");

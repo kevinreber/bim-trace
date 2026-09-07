@@ -15,7 +15,8 @@ BIM Trace is a web-native BIM authoring and review platform combining 3D paramet
 
 ## Environment Variables
 Copy `.env.example` to `.env` and fill in the values:
-- `ANTHROPIC_API_KEY` — Optional fallback for the AI Image to BIM feature. Users provide their own key via the UI (BYOK pattern). Only needed if you want a default key. Get a key at https://console.anthropic.com/settings/keys
+- `ANTHROPIC_API_KEY` — Optional fallback for the AI Image to BIM feature. Users provide their own key via the UI (BYOK pattern). Only needed if you want a default key locally. Get a key at https://console.anthropic.com/settings/keys
+- `ALLOW_SHARED_API_KEY` — Set to exactly `"true"` to let `ANTHROPIC_API_KEY` serve as the fallback **in production**. It is ignored there by default: the generation endpoint is unauthenticated, so a shared key lets anyone who finds the URL spend your credits at roughly $0.85 a request. Only opt in behind access control. See `resolveApiKey()` in `server/aiConfig.ts`.
 
 ## Commands
 - `npm run dev` — Start dev server
@@ -25,6 +26,8 @@ Copy `.env.example` to `.env` and fill in the values:
 - `npm run eval:run` — Capture AI generation responses for the eval fixtures (needs `npm run dev` running)
 - `npm run eval:score` — Score the newest captured eval run
 - `npm run eval:selftest` — Verify the eval checks themselves still fire
+- `npm test` — Vitest unit suite (geometry, salvage parsing, request validation)
+- `npm run test:watch` — Vitest in watch mode
 - `npm run test:e2e` — Playwright end-to-end suite (starts the dev server itself)
 - `npm run test:e2e:ui` — Same suite in Playwright's interactive UI mode
 
@@ -96,10 +99,15 @@ Both `server/apiProxy.ts` (dev) and `api/generate-floor-plan.ts` (production) bu
 - Structured outputs (`output_config.format`) constrain the response to `{ "elements": [...] }`, so the model cannot return prose around the JSON. The API rejects `additionalProperties` as an object and rejects `minimum`/`maximum` on numeric schemas, so `params` enumerates every type's keys explicitly and values cannot be bounded. `numRisers` is typed `integer` because an unbounded number grammar let constrained decoding fall into a runaway literal that consumed the whole token budget.
 - The system prompt classifies the input as a MEASURED DRAWING or a PICTORIAL image before anything else, and applies a different ruleset to each. Drawings are modelled literally — no inferred storeys, no inferred windows. Photographs get the depth-inference guidance. Getting this branch wrong is the single largest source of bad output.
 - Requests are streamed (`.stream().finalMessage()`) because a 32k `max_tokens` on a non-streaming request risks an HTTP timeout.
-- `validateGenerateRequest()` runs before anything touches the body, rejecting a missing or empty `images` array, more than `MAX_IMAGES` (5) images, and unsupported media types with a 400. Both proxies must call it: they read `body.images.length` immediately after, which throws on a malformed body. **The endpoint is unauthenticated.** It is safe when every caller supplies their own key, but a deployment that sets the `ANTHROPIC_API_KEY` fallback is exposing a paid endpoint — at `MAX_TOKENS` 32k and effort `high` a single request can cost around $0.85. Leave the fallback unset in production unless the deployment is access-controlled.
+- `validateGenerateRequest()` runs before anything touches the body, rejecting a missing or empty `images` array, more than `MAX_IMAGES` (5) images, and unsupported media types with a 400. Both proxies must call it: they read `body.images.length` immediately after, which throws on a malformed body. **The endpoint is unauthenticated**, which is safe under BYOK because every caller spends their own credits. `resolveApiKey()` protects that property: it prefers the caller's key, and ignores the `ANTHROPIC_API_KEY` fallback entirely when `NODE_ENV` or `VERCEL_ENV` is `production` unless `ALLOW_SHARED_API_KEY` is exactly `"true"`. Without that gate a production deploy with a key set is an open paid endpoint at roughly $0.85 a request.
 
 ### Evals
 `evals/` scores AI generation against fixture images instead of judging it by eye. Checks run on the **raw model response**, before `validateAndFixElements` repairs anything, so they measure the model rather than the validator. See `evals/README.md` for the check list. A 10-image corpus covering 7 stratified fixtures ships in `evals/fixtures/` (licences in `ATTRIBUTION.md`); `cad-plan-clean` is the control case — if it fails, the prompt or schema is at fault rather than model vision. Captured runs live in `evals/runs/` (gitignored). Scoring reads only from disk, so re-score after changing a check instead of spending another capture. Where a drawing genuinely admits more than one storey count, the fixture asserts `floorsRange: [min, max]` rather than an exact `floors` — `hand-sketch` has a roof belvedere served by a stair drawn in the plan, so both 1 and 2 are defensible and an exact assertion would score the ambiguity rather than the model.
+
+### Unit tests
+`vitest.config.ts` is standalone rather than extending `vite.config.ts`, because that config registers the API proxy plugin, which pulls in the Anthropic SDK and reads `.env`. Tests live next to their source as `*.test.ts` under `src/` and `server/`; Playwright owns `e2e/` and the two runners do not overlap.
+
+Coverage is deliberately narrow — the pure functions whose failure modes are invisible in the viewport. `computeWallOpenings` (a hole placed wrong renders as a door embedded in solid wall), `snapWallEndpoints` (unsnapped corners leave rooms unenclosed), `salvageTruncatedElements` (a mis-parsed brace silently loses elements), and `resolveApiKey` / `validateGenerateRequest` (both guard an unauthenticated endpoint). All three geometry helpers were mutation-checked: breaking the tolerance or the string walker fails the matching test rather than passing quietly.
 
 ### End-to-end tests
 `e2e/` holds the Playwright suite; `playwright.config.ts` starts `npm run dev` automatically and reuses an already-running server outside CI. `e2e/smoke.spec.ts` covers the shell — ribbon tab switching, the `Shift+W` / `Escape` / `G` keyboard shortcuts, and the metric/imperial toggle — by driving real state transitions with nothing stubbed.

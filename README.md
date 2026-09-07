@@ -19,7 +19,7 @@ Most BIM tools are too heavy for quick reviews, and most PDF tools lack 3D conte
 | **AI** | **Anthropic Claude API** | Image-to-BIM generation |
 | **Styling** | **Tailwind CSS** | Utility-first CSS framework |
 | **Linting** | **Biome** | Lint & format |
-| **Testing** | **Playwright** | End-to-end suite over the app shell |
+| **Testing** | **Vitest + Playwright** | Unit suite and end-to-end suite |
 | **Persistence** | **IndexedDB** | Local auto-save of the workspace |
 
 ---
@@ -82,13 +82,18 @@ npm run dev
 The AI Image-to-BIM feature is bring-your-own-key: paste an Anthropic key into
 the modal and it is kept in browser storage and sent per request to a
 server-side proxy, so it never appears in the bundle. `ANTHROPIC_API_KEY` is
-only a fallback for when no user key is supplied.
+only a fallback for when no user key is supplied, and it is **ignored in
+production** — the generation endpoint has no authentication, so a shared key
+on a public deployment would let anyone who finds the URL spend your credits at
+roughly $0.85 per request. Set `ALLOW_SHARED_API_KEY=true` to override that, and
+only behind access control.
 
 | Command | Purpose |
 | :--- | :--- |
 | `npm run dev` | Dev server |
 | `npm run build` | Production build (type-check + bundle) |
 | `npm run lint` | Biome lint & format check |
+| `npm test` | Vitest unit suite |
 | `npm run test:e2e` | Playwright end-to-end suite (starts the dev server itself) |
 | `npm run eval:score` | Score captured AI-generation eval runs (reads from disk, free) |
 | `npm run eval:run` | Capture new eval responses — **spends Anthropic credits** |
