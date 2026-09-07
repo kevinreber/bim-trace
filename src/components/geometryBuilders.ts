@@ -640,10 +640,20 @@ export function buildRoofMesh(
   overhang: number,
   level: number,
   material: THREE.Material,
+  rotation = 0,
 ): THREE.Mesh {
-  const width = Math.abs(end.x - start.x) + overhang * 2;
-  const depth = Math.abs(end.z - start.z) + overhang * 2;
-  if (width < 0.01 || depth < 0.01) return new THREE.Mesh();
+  const footprintW = Math.abs(end.x - start.x) + overhang * 2;
+  const footprintD = Math.abs(end.z - start.z) + overhang * 2;
+  if (footprintW < 0.01 || footprintD < 0.01) return new THREE.Mesh();
+
+  // The ridge runs along the extrusion axis, so a quarter turn moves it to the
+  // other axis — and the span and extrusion have to swap with it, or a
+  // rectangular roof ends up overhanging one pair of walls and short of the
+  // other. Without this the ridge could only ever run one way, whatever the
+  // building actually looked like.
+  const quarterTurn = Math.abs(Math.sin(rotation)) > Math.SQRT1_2;
+  const width = quarterTurn ? footprintD : footprintW;
+  const depth = quarterTurn ? footprintW : footprintD;
 
   const cx = (start.x + end.x) / 2;
   const cz = (start.z + end.z) / 2;
@@ -659,12 +669,16 @@ export function buildRoofMesh(
     depth,
     bevelEnabled: false,
   });
+  // Centre the extrusion on the mesh origin so rotation turns the roof about
+  // its own middle rather than swinging it off the building.
+  geo.translate(0, 0, -depth / 2);
   const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(cx, level, cz - depth / 2);
+  mesh.position.set(cx, level, cz);
+  mesh.rotation.y = rotation;
 
   const baseGeo = new THREE.BoxGeometry(width, thickness, depth);
   const baseMesh = new THREE.Mesh(baseGeo, material);
-  baseMesh.position.set(0, thickness / 2, depth / 2);
+  baseMesh.position.set(0, thickness / 2, 0);
   mesh.add(baseMesh);
 
   return mesh;
@@ -1646,6 +1660,7 @@ export function buildMeshForElement(
         p.overhang,
         el.level,
         material,
+        el.rotation ?? 0,
       );
     }
     case "stair": {

@@ -4,6 +4,7 @@ import {
   readServerPayload,
   salvageTruncatedElements,
   snapWallEndpoints,
+  validateAndFixElements,
 } from "./aiFloorPlanService";
 
 const wall = (
@@ -175,5 +176,90 @@ describe("readServerPayload", () => {
     expect(() => readServerPayload('{"stopReason":"end_turn"}', 200)).toThrow(
       /no generated text/,
     );
+  });
+});
+
+/**
+ * Railings, curtain walls, and materials were absent from the output schema, so
+ * a balcony came back as a row of columns, a glazed gable as ordinary windows,
+ * and every surface in its stock type colour. These pin the validator paths
+ * that carry them through.
+ */
+describe("validateAndFixElements — new element types and materials", () => {
+  const wallItem = {
+    id: "w1",
+    type: "wall",
+    name: "South Wall",
+    start: { x: 0, z: 0 },
+    end: { x: 6, z: 0 },
+    params: { height: 3, thickness: 0.3 },
+    level: 0,
+    material: "brick",
+  };
+
+  it("keeps a railing with its params", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "r1",
+        type: "railing",
+        name: "Balcony Guard",
+        start: { x: 0, z: 2 },
+        end: { x: 4, z: 2 },
+        params: { height: 1.1, postSpacing: 1.4 },
+        level: 3,
+        material: "steel",
+      },
+    ]);
+    const railing = elements.find((e) => e.type === "railing");
+    expect(railing).toBeDefined();
+    expect(railing?.material).toBe("steel");
+    expect((railing?.params as { postSpacing: number }).postSpacing).toBe(1.4);
+  });
+
+  it("keeps a curtain wall with its glazing grid", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "cw1",
+        type: "curtainWall",
+        name: "Glazed Gable",
+        start: { x: 0, z: 0 },
+        end: { x: 5, z: 0 },
+        params: {
+          height: 6,
+          panelWidth: 1.5,
+          panelHeight: 2,
+          mullionSize: 0.08,
+        },
+        level: 0,
+        material: "glass",
+      },
+    ]);
+    const cw = elements.find((e) => e.type === "curtainWall");
+    expect(cw).toBeDefined();
+    expect(cw?.material).toBe("glass");
+    expect((cw?.params as { panelWidth: number }).panelWidth).toBe(1.5);
+  });
+
+  it("carries the material through onto walls", () => {
+    const { elements } = validateAndFixElements([wallItem]);
+    expect(elements[0].material).toBe("brick");
+  });
+
+  // An unrecognised key would resolve to the concrete fallback in
+  // getMaterialForElement, disguising a bad value as a deliberate one.
+  it("drops a material outside the known set rather than passing it on", () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: "unobtainium" },
+    ]);
+    expect(elements[0].material).toBeUndefined();
+  });
+
+  it("treats a null material as no choice", () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: null },
+    ]);
+    expect(elements[0].material).toBeUndefined();
   });
 });

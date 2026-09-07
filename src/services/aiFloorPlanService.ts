@@ -3,7 +3,12 @@ import {
   type AllowedModel,
   DEFAULT_MODEL,
 } from "../../server/aiConfig";
-import { type BimElement, type BimElementType, DEFAULT_PARAMS } from "../types";
+import {
+  type BimElement,
+  type BimElementType,
+  type BimMaterialType,
+  DEFAULT_PARAMS,
+} from "../types";
 
 const SUPPORTED_TYPES: BimElementType[] = [
   "wall",
@@ -15,7 +20,36 @@ const SUPPORTED_TYPES: BimElementType[] = [
   "stair",
   "ceiling",
   "beam",
+  "railing",
+  "curtainWall",
 ];
+
+const MATERIAL_TYPES: BimMaterialType[] = [
+  "concrete",
+  "wood",
+  "steel",
+  "glass",
+  "brick",
+  "stone",
+  "drywall",
+  "aluminum",
+];
+
+/**
+ * Reads the model's material choice, or undefined to fall back to the type
+ * default. Anything unrecognised is dropped rather than passed through, since
+ * `getMaterialForElement` would otherwise resolve it to the concrete fallback
+ * and quietly disguise a bad value as a deliberate one.
+ */
+function readMaterial(
+  item: Record<string, unknown>,
+): BimMaterialType | undefined {
+  const value = item.material;
+  return typeof value === "string" &&
+    MATERIAL_TYPES.includes(value as BimMaterialType)
+    ? (value as BimMaterialType)
+    : undefined;
+}
 
 type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 
@@ -93,7 +127,7 @@ function computeWallAngle(wall: BimElement): number {
   return Math.atan2(dz, dx);
 }
 
-function validateAndFixElements(raw: Record<string, unknown>[]): {
+export function validateAndFixElements(raw: Record<string, unknown>[]): {
   elements: BimElement[];
   warnings: string[];
 } {
@@ -125,6 +159,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
         thickness: asNumber(params?.thickness, defaultP.thickness),
       },
       level: asNumber(item.level, 0),
+      material: readMaterial(item),
     });
   }
 
@@ -168,6 +203,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
           width: asNumber(params?.width, defaultP.width),
         },
         level: asNumber(item.level, 0),
+        material: readMaterial(item),
         rotation,
         hostWallId,
       });
@@ -185,6 +221,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
           sillHeight: asNumber(params?.sillHeight, defaultP.sillHeight),
         },
         level: asNumber(item.level, 0),
+        material: readMaterial(item),
         rotation,
         hostWallId,
       });
@@ -222,6 +259,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             radius: asNumber(params?.radius, defaultP.radius),
           },
           level,
+          material: readMaterial(item),
         });
         break;
       }
@@ -237,6 +275,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             thickness: asNumber(params?.thickness, defaultP.thickness),
           },
           level,
+          material: readMaterial(item),
         });
         break;
       }
@@ -254,6 +293,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             overhang: asNumber(params?.overhang, defaultP.overhang),
           },
           level,
+          material: readMaterial(item),
         });
         break;
       }
@@ -272,6 +312,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             numRisers: asNumber(params?.numRisers, defaultP.numRisers),
           },
           level,
+          material: readMaterial(item),
         });
         break;
       }
@@ -287,6 +328,7 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             thickness: asNumber(params?.thickness, defaultP.thickness),
           },
           level,
+          material: readMaterial(item),
         });
         break;
       }
@@ -303,6 +345,43 @@ function validateAndFixElements(raw: Record<string, unknown>[]): {
             width: asNumber(params?.width, defaultP.width),
           },
           level,
+          material: readMaterial(item),
+        });
+        break;
+      }
+      case "railing": {
+        const defaultP = DEFAULT_PARAMS.railing;
+        elements.push({
+          id: newId,
+          type: "railing",
+          name: (item.name as string) || `Railing ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            height: asNumber(params?.height, defaultP.height),
+            postSpacing: asNumber(params?.postSpacing, defaultP.postSpacing),
+          },
+          level,
+          material: readMaterial(item),
+        });
+        break;
+      }
+      case "curtainWall": {
+        const defaultP = DEFAULT_PARAMS.curtainWall;
+        elements.push({
+          id: newId,
+          type: "curtainWall",
+          name: (item.name as string) || `Curtain Wall ${elements.length + 1}`,
+          start: validatePoint(item.start),
+          end: validatePoint(item.end),
+          params: {
+            height: asNumber(params?.height, defaultP.height),
+            panelWidth: asNumber(params?.panelWidth, defaultP.panelWidth),
+            panelHeight: asNumber(params?.panelHeight, defaultP.panelHeight),
+            mullionSize: asNumber(params?.mullionSize, defaultP.mullionSize),
+          },
+          level,
+          material: readMaterial(item),
         });
         break;
       }

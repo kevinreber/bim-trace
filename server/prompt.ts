@@ -60,8 +60,12 @@ Each element has this shape:
 - stair:   { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 14 }
 - ceiling: { "thickness": 0.15 }
 - beam:    { "height": 0.4, "width": 0.3 }
+- railing: { "height": 1.0, "postSpacing": 1.2 }
+- curtainWall: { "height": 3.5, "panelWidth": 1.2, "panelHeight": 1.8, "mullionSize": 0.06 }
 
 Use these default dimensions unless the image clearly shows different proportions.
+
+Every element also carries "material" — one of concrete, wood, steel, glass, brick, stone, drywall, aluminum, or null to use the type default. See Material Rules below.
 
 ## Coordinate System
 
@@ -113,6 +117,26 @@ Use these default dimensions unless the image clearly shows different proportion
 - Roof is defined by start and end points forming the rectangular base (opposite corners)
 - Place roof at the top level (e.g. level 6 for a 2-story building, level 3 for single-story)
 - The "height" param controls the roof peak height above the base
+- The roof is a gable: a ridge with two slopes falling to the eaves. By default the ridge runs along the Z axis. Set "rotation" to 1.5708 (90 degrees) when the ridge should run along the X axis instead — look at which way the roof slopes in the image and match it. Getting this wrong turns the building sideways.
+- There is no hip or dormer geometry available. Approximate a hipped roof with a gable, and model a dormer window as a window on the wall below rather than inventing a shape that cannot be built.
+
+## Railing Rules
+
+- Use "railing" for balcony edges, terrace guards, porch rails, and stair guards — anything you would otherwise be tempted to approximate with a row of columns.
+- Defined by start and end points, like a wall. "height" is the guard height (about 1m) and "postSpacing" the gap between posts.
+
+## Curtain Wall Rules
+
+- Use "curtainWall" for a large glazed area read as one assembly: a fully glazed gable, a storefront, a two-storey window wall. A grid of separate windows is the wrong model for these.
+- Defined by start and end points along its base, like a wall. "panelWidth" and "panelHeight" set the glazing grid; "mullionSize" the frame thickness.
+- An ordinary punched opening in a solid wall is still a "window". Reach for curtainWall only when glass is the wall.
+
+## Material Rules
+
+- Set "material" on every element to what you can actually see: one of concrete, wood, steel, glass, brick, stone, drywall, aluminum.
+- Read it from the image rather than assuming. Dark roof tiles are "stone" or "concrete", not the default. Timber cladding is "wood". Render or stucco is "concrete". Exposed brickwork is "brick". Glazing and curtain walls are "glass". Metal railings and gutters are "steel" or "aluminum".
+- Use null only when a surface is genuinely not visible, such as an interior partition inferred from the layout.
+- For a MEASURED DRAWING, use null unless the drawing labels or hatches a material. Do not guess a material from a line drawing.
 
 ## Stair Rules
 
@@ -130,13 +154,13 @@ Use these default dimensions unless the image clearly shows different proportion
 This is what a PICTORIAL input should produce — a home photographed from outside, inferred as a main body + left porch wing, steep gable roof, porch columns, and varied window sizes. Do NOT use it as a template for a MEASURED DRAWING: a single floor plan produces a single level with only the elements actually drawn.
 
 { "elements": [
-  { "id": "slab-g", "type": "slab", "name": "Ground Floor Slab", "start": { "x": -7, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "thickness": 0.25 }, "level": 0 },
-  { "id": "wall-1", "type": "wall", "name": "Front Wall - Main Body", "start": { "x": -3, "z": -5 }, "end": { "x": 6, "z": -5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-2", "type": "wall", "name": "East Wall", "start": { "x": 6, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-3", "type": "wall", "name": "Rear Wall", "start": { "x": 6, "z": 5 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-4", "type": "wall", "name": "West Wall - Main Body", "start": { "x": -3, "z": 5 }, "end": { "x": -3, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-5", "type": "wall", "name": "Porch North Wall", "start": { "x": -3, "z": 2 }, "end": { "x": -7, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
-  { "id": "wall-6", "type": "wall", "name": "Porch West Wall", "start": { "x": -7, "z": 2 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0 },
+  { "id": "slab-g", "type": "slab", "name": "Ground Floor Slab", "start": { "x": -7, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "thickness": 0.25 }, "level": 0, "material": "concrete" },
+  { "id": "wall-1", "type": "wall", "name": "Front Wall - Main Body", "start": { "x": -3, "z": -5 }, "end": { "x": 6, "z": -5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
+  { "id": "wall-2", "type": "wall", "name": "East Wall", "start": { "x": 6, "z": -5 }, "end": { "x": 6, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
+  { "id": "wall-3", "type": "wall", "name": "Rear Wall", "start": { "x": 6, "z": 5 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
+  { "id": "wall-4", "type": "wall", "name": "West Wall - Main Body", "start": { "x": -3, "z": 5 }, "end": { "x": -3, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
+  { "id": "wall-5", "type": "wall", "name": "Porch North Wall", "start": { "x": -3, "z": 2 }, "end": { "x": -7, "z": 2 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
+  { "id": "wall-6", "type": "wall", "name": "Porch West Wall", "start": { "x": -7, "z": 2 }, "end": { "x": -7, "z": 5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 0, "material": "brick" },
   { "id": "door-1", "type": "door", "name": "Main Entry Door", "start": { "x": 1, "z": -5 }, "end": { "x": 1, "z": -5 }, "params": { "height": 2.4, "width": 1.5 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
   { "id": "window-1", "type": "window", "name": "Large Picture Window Right", "start": { "x": 4, "z": -5 }, "end": { "x": 4, "z": -5 }, "params": { "height": 2.0, "width": 2.4, "sillHeight": 0.5 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
   { "id": "window-2", "type": "window", "name": "Small Window Left", "start": { "x": -1.5, "z": -5 }, "end": { "x": -1.5, "z": -5 }, "params": { "height": 1.2, "width": 0.8, "sillHeight": 0.9 }, "level": 0, "rotation": 0, "hostWallId": "wall-1" },
@@ -146,8 +170,8 @@ This is what a PICTORIAL input should produce — a home photographed from outsi
   { "id": "wall-L1-1", "type": "wall", "name": "Front Wall - Upper", "start": { "x": -1, "z": -5 }, "end": { "x": 4, "z": -5 }, "params": { "height": 3, "thickness": 0.3 }, "level": 3 },
   { "id": "window-L1-1", "type": "window", "name": "Upper Dormer Window", "start": { "x": 1.5, "z": -5 }, "end": { "x": 1.5, "z": -5 }, "params": { "height": 1.0, "width": 0.8, "sillHeight": 0.9 }, "level": 3, "rotation": 0, "hostWallId": "wall-L1-1" },
   { "id": "stair-1", "type": "stair", "name": "Main Staircase", "start": { "x": 3, "z": 2 }, "end": { "x": 3, "z": 5 }, "params": { "riserHeight": 0.18, "treadDepth": 0.28, "width": 1.0, "numRisers": 17 }, "level": 0 },
-  { "id": "roof-1", "type": "roof", "name": "Main Gable Roof", "start": { "x": -3.3, "z": -5.3 }, "end": { "x": 6.3, "z": 5.3 }, "params": { "height": 4.0, "thickness": 0.2, "overhang": 0.5 }, "level": 3 },
-  { "id": "roof-2", "type": "roof", "name": "Porch Roof", "start": { "x": -7.3, "z": 1.7 }, "end": { "x": -2.7, "z": 5.3 }, "params": { "height": 1.5, "thickness": 0.2, "overhang": 0.3 }, "level": 3 }
+  { "id": "roof-1", "type": "roof", "name": "Main Gable Roof", "start": { "x": -3.3, "z": -5.3 }, "end": { "x": 6.3, "z": 5.3 }, "params": { "height": 4.0, "thickness": 0.2, "overhang": 0.5 }, "level": 3, "rotation": 1.5708, "material": "stone" },
+  { "id": "roof-2", "type": "roof", "name": "Porch Roof", "start": { "x": -7.3, "z": 1.7 }, "end": { "x": -2.7, "z": 5.3 }, "params": { "height": 1.5, "thickness": 0.2, "overhang": 0.3 }, "level": 3, "rotation": 0, "material": "stone" }
 ] }
 
 Key patterns in this example:
