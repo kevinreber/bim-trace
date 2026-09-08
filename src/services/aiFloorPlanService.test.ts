@@ -4,6 +4,7 @@ import {
   readServerPayload,
   salvageTruncatedElements,
   snapWallEndpoints,
+  validateAndFixElements,
 } from "./aiFloorPlanService";
 
 const wall = (
@@ -175,5 +176,153 @@ describe("readServerPayload", () => {
     expect(() => readServerPayload('{"stopReason":"end_turn"}', 200)).toThrow(
       /no generated text/,
     );
+  });
+});
+
+/**
+ * Railings, curtain walls, and materials were absent from the output schema, so
+ * a balcony came back as a row of columns, a glazed gable as ordinary windows,
+ * and every surface in its stock type colour. These pin the validator paths
+ * that carry them through.
+ */
+describe("validateAndFixElements — new element types and materials", () => {
+  const wallItem = {
+    id: "w1",
+    type: "wall",
+    name: "South Wall",
+    start: { x: 0, z: 0 },
+    end: { x: 6, z: 0 },
+    params: { height: 3, thickness: 0.3 },
+    level: 0,
+    material: "brick",
+  };
+
+  it("keeps a railing with its params", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "r1",
+        type: "railing",
+        name: "Balcony Guard",
+        start: { x: 0, z: 2 },
+        end: { x: 4, z: 2 },
+        params: { height: 1.1, postSpacing: 1.4 },
+        level: 3,
+        material: "steel",
+      },
+    ]);
+    const railing = elements.find((e) => e.type === "railing");
+    expect(railing).toBeDefined();
+    expect(railing?.material).toBe("steel");
+    expect((railing?.params as { postSpacing: number }).postSpacing).toBe(1.4);
+  });
+
+  it("keeps a curtain wall with its glazing grid", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "cw1",
+        type: "curtainWall",
+        name: "Glazed Gable",
+        start: { x: 0, z: 0 },
+        end: { x: 5, z: 0 },
+        params: {
+          height: 6,
+          panelWidth: 1.5,
+          panelHeight: 2,
+          mullionSize: 0.08,
+        },
+        level: 0,
+        material: "glass",
+      },
+    ]);
+    const cw = elements.find((e) => e.type === "curtainWall");
+    expect(cw).toBeDefined();
+    expect(cw?.material).toBe("glass");
+    expect((cw?.params as { panelWidth: number }).panelWidth).toBe(1.5);
+  });
+
+  it("carries the material through onto walls", () => {
+    const { elements } = validateAndFixElements([wallItem]);
+    expect(elements[0].material).toBe("brick");
+  });
+
+  // An unrecognised key would resolve to the concrete fallback in
+  // getMaterialForElement, disguising a bad value as a deliberate one.
+  it("drops a material outside the known set rather than passing it on", () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: "unobtainium" },
+    ]);
+    expect(elements[0].material).toBeUndefined();
+  });
+
+  it("treats a null material as no choice", () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: null },
+    ]);
+    expect(elements[0].material).toBeUndefined();
+  });
+
+  // The schema carries "unknown" rather than null, because a null inside an
+  // enum is a construct whose acceptance by the API has never been tested here.
+  it('treats the "unknown" sentinel as no choice', () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: "unknown" },
+    ]);
+    expect(elements[0].material).toBeUndefined();
+  });
+
+  // Doors and windows are built in a different pass from walls and structural
+  // elements, so their material passthrough is a separate code path.
+  it("carries the material through onto doors and windows", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "d1",
+        type: "door",
+        name: "Front Door",
+        start: { x: 3, z: 0 },
+        end: { x: 3, z: 0 },
+        params: { height: 2.1, width: 0.9 },
+        level: 0,
+        hostWallId: "w1",
+        material: "wood",
+      },
+      {
+        id: "win1",
+        type: "window",
+        name: "Living Room Window",
+        start: { x: 5, z: 0 },
+        end: { x: 5, z: 0 },
+        params: { height: 1.2, width: 1, sillHeight: 0.9 },
+        level: 0,
+        hostWallId: "w1",
+        material: "glass",
+      },
+    ]);
+    expect(elements.find((e) => e.type === "door")?.material).toBe("wood");
+    expect(elements.find((e) => e.type === "window")?.material).toBe("glass");
+  });
+
+  // Roofs go through the third pass and are the only element carrying a ridge
+  // rotation, which nothing else in the validator touches.
+  it("carries material and ridge rotation through onto a roof", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "r1",
+        type: "roof",
+        name: "Main Gable Roof",
+        start: { x: 0, z: 0 },
+        end: { x: 6, z: 4 },
+        params: { height: 2.5, thickness: 0.2, overhang: 0.3 },
+        level: 3,
+        rotation: 1.5708,
+        material: "stone",
+      },
+    ]);
+    const roof = elements.find((e) => e.type === "roof");
+    expect(roof?.material).toBe("stone");
+    expect(roof?.rotation).toBeCloseTo(1.5708);
   });
 });

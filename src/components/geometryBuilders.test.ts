@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BimElement } from "@/types";
-import { computeWallOpenings } from "./geometryBuilders";
+import { buildRoofMesh, computeWallOpenings } from "./geometryBuilders";
 
 /**
  * `computeWallOpenings` decides which doors and windows cut a hole in a wall.
@@ -151,5 +151,75 @@ describe("computeWallOpenings", () => {
       door("d1", { x: 3, z: 0 }, "w1"),
     ]);
     expect(openings[0].bottomOffset).toBe(0);
+  });
+});
+
+/**
+ * The roof ridge runs along the extrusion axis. Before rotation was plumbed
+ * through it could only ever run one way, so a building whose roof sloped the
+ * other direction came out turned ninety degrees from the image it was read
+ * from — and no schema or prompt change could have corrected it.
+ */
+describe("buildRoofMesh", () => {
+  const MAT = { isMaterial: true } as unknown as import("three").Material;
+  const start = { x: -5, z: -3 };
+  const end = { x: 5, z: 3 };
+
+  it("centres the roof on its footprint", () => {
+    const mesh = buildRoofMesh(start, end, 2.5, 0.2, 0.3, 3, MAT);
+    expect(mesh.position.x).toBeCloseTo(0);
+    expect(mesh.position.z).toBeCloseTo(0);
+    expect(mesh.position.y).toBeCloseTo(3);
+  });
+
+  it("leaves the ridge on the default axis when unrotated", () => {
+    const mesh = buildRoofMesh(start, end, 2.5, 0.2, 0.3, 3, MAT);
+    expect(mesh.rotation.y).toBeCloseTo(0);
+  });
+
+  it("applies the requested ridge rotation", () => {
+    const mesh = buildRoofMesh(start, end, 2.5, 0.2, 0.3, 3, MAT, Math.PI / 2);
+    expect(mesh.rotation.y).toBeCloseTo(Math.PI / 2);
+  });
+
+  // A quarter turn without swapping the span leaves a rectangular roof
+  // overhanging one pair of walls and short of the other.
+  it("swaps span and extrusion on a quarter turn so the footprint still fits", () => {
+    const flat = buildRoofMesh(start, end, 2.5, 0.2, 0.3, 3, MAT);
+    const turned = buildRoofMesh(
+      start,
+      end,
+      2.5,
+      0.2,
+      0.3,
+      3,
+      MAT,
+      Math.PI / 2,
+    );
+    // The base slab is the first child of each roof and carries the dimensions.
+    const flatBase = flat.children[0] as import("three").Mesh;
+    const turnedBase = turned.children[0] as import("three").Mesh;
+    flatBase.geometry.computeBoundingBox();
+    turnedBase.geometry.computeBoundingBox();
+    const f = flatBase.geometry.boundingBox;
+    const t = turnedBase.geometry.boundingBox;
+    expect(f).not.toBeNull();
+    expect(t).not.toBeNull();
+    if (!f || !t) return;
+    expect(t.max.x - t.min.x).toBeCloseTo(f.max.z - f.min.z);
+    expect(t.max.z - t.min.z).toBeCloseTo(f.max.x - f.min.x);
+  });
+
+  it("returns an empty mesh for a degenerate footprint", () => {
+    const mesh = buildRoofMesh(
+      { x: 0, z: 0 },
+      { x: 0, z: 0 },
+      2.5,
+      0.2,
+      0,
+      3,
+      MAT,
+    );
+    expect(mesh.children).toHaveLength(0);
   });
 });

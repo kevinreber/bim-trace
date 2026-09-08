@@ -98,6 +98,8 @@ Tier 1 needs no ground truth — these are internal-consistency invariants:
 | `has_roof` | A building with walls but no roof. |
 | `no_origin_cluster` | Elements collapsed to (0,0), the signature of coordinates that failed to parse upstream. |
 | `finite_coordinates` | NaN or Infinity in positions. |
+| `footprint_traceable` | Ground-floor walls that do not trace a closed outline — they touch each other but enclose nothing. |
+| `footprint_single_component` | A wall group standing clear of the main building, so the footprint describes only one of several. Every other check passes on two closed boxes. |
 
 Tier 2 runs only where `manifest.json` supplies an `expect` block. Keep it to
 cheap scalar labels — roughly two minutes of work per image, not hand-modelled
@@ -113,6 +115,27 @@ geometry:
 ```
 
 Counts are compared exactly; `footprintMeters` allows 25% deviation.
+
+`footprintShape` scores the shape of the plan rather than its extents:
+
+```json
+"footprintShape": { "minCorners": 6, "maxFill": 0.95 }
+```
+
+`footprintMeters` is a bounding box, so an L-shaped plan and a plain box with the
+same extents score identically — which meant "the model defaulted to a
+rectangle", the exact failure `l-shaped-plan` was added to catch, was
+unmeasurable. The scorer now walks the outer outline of the ground-floor walls
+and reports three numbers in `stats`: `footprintCorners`, `footprintArea`, and
+`footprintFill` (outline area over bounding-box area). A rectangle is 4 corners
+at fill 1.0; an L is 6 corners at roughly 0.75. `minCorners`, `maxCorners`,
+`minFill` and `maxFill` are all optional, so a fixture can assert articulation
+(`l-shaped-plan`) or assert the absence of it (`cad-plan-clean`, which really is
+rectangular and should not gain invented bays).
+
+These numbers are worth reading even where nothing is asserted. `exterior-front`
+currently traces 4 corners at fill 1.0 — a photographed house modelled as a plain
+box — which is visible as a number now rather than only in the viewport.
 `floorsRange: [min, max]` asserts an inclusive band instead of an exact
 storey count, for drawings where the count genuinely admits more than one
 reading — `hand-sketch` has a roof belvedere served by a stair, which is a

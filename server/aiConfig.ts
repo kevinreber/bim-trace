@@ -162,6 +162,7 @@ export const BIM_OUTPUT_SCHEMA = {
           "level",
           "rotation",
           "hostWallId",
+          "material",
         ],
         properties: {
           id: { type: "string" },
@@ -177,15 +178,46 @@ export const BIM_OUTPUT_SCHEMA = {
               "stair",
               "ceiling",
               "beam",
+              // Both have had builders, params, and materials in the app all
+              // along; leaving them out of the enum meant a balcony came back
+              // as columns and a glazed gable as ordinary windows, because
+              // those were the closest shapes the model was allowed to name.
+              "railing",
+              "curtainWall",
             ],
           },
           name: { type: "string" },
           start: POINT_SCHEMA,
           end: POINT_SCHEMA,
           level: { type: "number" },
-          // Null for everything except doors and windows.
+          // Null for everything except doors, windows, and roofs, where it
+          // sets the ridge direction.
           rotation: { type: ["number", "null"] },
           hostWallId: { type: ["string", "null"] },
+          // Without this every element fell back to its type default, so a
+          // dark tiled roof and a timber-clad gable both rendered in the same
+          // stock brown.
+          //
+          // "unknown" rather than null carries "use the type default". A null
+          // inside an enum, or an enum on a nullable type, is a construct this
+          // schema has never used and the API's acceptance of it cannot be
+          // tested without spending a real generation — and a schema the API
+          // rejects breaks every request, not just an edge case. This sticks to
+          // the plain string enum already proven by the `type` property above.
+          material: {
+            type: "string",
+            enum: [
+              "concrete",
+              "wood",
+              "steel",
+              "glass",
+              "brick",
+              "stone",
+              "drywall",
+              "aluminum",
+              "unknown",
+            ],
+          },
           params: {
             type: "object",
             additionalProperties: false,
@@ -199,6 +231,10 @@ export const BIM_OUTPUT_SCHEMA = {
               riserHeight: DIM,
               treadDepth: DIM,
               numRisers: { type: "integer" },
+              postSpacing: DIM,
+              panelWidth: DIM,
+              panelHeight: DIM,
+              mullionSize: DIM,
             },
           },
         },

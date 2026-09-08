@@ -50,6 +50,181 @@ function distanceToSegment(p, a, b) {
   return Math.hypot(num(p?.x) - (num(a?.x) + t * dx), num(p?.z) - (num(a?.z) + t * dz));
 }
 
+
+const FOOTPRINT_TOL = 0.15;
+const vertexKey = (p) =>
+  `${Math.round(num(p?.x) / FOOTPRINT_TOL)}:${Math.round(num(p?.z) / FOOTPRINT_TOL)}`;
+
+/**
+ * Traces the outer outline of a level's walls.
+ *
+ * The bounding box says nothing about shape: an L-shaped plan and a plain box
+ * with the same extents score identically on `footprintMeters`, so "the model
+ * defaulted to a rectangle" — the exact failure `l-shaped-plan` was added to
+ * catch — was invisible. Walking the outline gives the corner count and the
+ * enclosed area, which do distinguish them.
+ *
+ * Starts at the lowest-then-leftmost vertex, which is always on the outer
+ * boundary, and at each step takes the most clockwise turn available, which
+ * keeps the walk hugging the outside and ignores interior partitions.
+ */
+function outerBoundary(walls) {
+  const verts = new Map();
+  const adj = new Map();
+  const add = (p) => {
+    const k = vertexKey(p);
+    if (!verts.has(k)) {
+      verts.set(k, { x: num(p?.x), z: num(p?.z) });
+      adj.set(k, new Set());
+    }
+    return k;
+  };
+  for (const w of walls) {
+    const a = add(w.start);
+    const b = add(w.end);
+    if (a === b) continue;
+    adj.get(a).add(b);
+    adj.get(b).add(a);
+  }
+  if (verts.size < 3) return null;
+
+  let startK = null;
+  for (const [k, v] of verts) {
+    if (startK === null) { startK = k; continue; }
+    const s = verts.get(startK);
+    if (v.z < s.z || (v.z === s.z && v.x < s.x)) startK = k;
+  }
+
+  const poly = [];
+  let prevK = null;
+  let curK = startK;
+  let guard = verts.size * 4;
+  do {
+    poly.push(verts.get(curK));
+    const cur = verts.get(curK);
+    // On the first step, pretend we arrived travelling -X so the walk sets off
+    // around the outside rather than into the building.
+    const inDir = prevK
+      ? Math.atan2(cur.z - verts.get(prevK).z, cur.x - verts.get(prevK).x)
+      : Math.PI;
+    let bestK = null;
+    let bestTurn = Infinity;
+    for (const nK of adj.get(curK)) {
+      // Backtracking is allowed only from a dead end, where it is the sole way on.
+      if (nK === prevK && adj.get(curK).size > 1) continue;
+      const n = verts.get(nK);
+      const out = Math.atan2(n.z - cur.z, n.x - cur.x);
+      let turn = out - (inDir + Math.PI);
+      while (turn <= 0) turn += Math.PI * 2;
+      while (turn > Math.PI * 2) turn -= Math.PI * 2;
+      if (turn < bestTurn) { bestTurn = turn; bestK = nK; }
+    }
+    if (!bestK) return null;
+    prevK = curK;
+    curK = bestK;
+  } while (curK !== startK && guard-- > 0);
+
+  return guard > 0 && poly.length >= 3 ? poly : null;
+}
+
+/**
+ * Number of disconnected wall groups.
+ *
+ * Uses the same adjacency rule as `wall_loop_closure`: a wall joins another
+ * when an endpoint lands anywhere on its span, not only at a shared endpoint.
+ * Endpoint-only adjacency counts an ordinary interior partition meeting the
+ * middle of an exterior wall as its own group, which is normal architecture
+ * rather than a defect.
+ */
+function connectedGroups(walls) {
+  const parent = walls.map((_, i) => i);
+  const find = (i) => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const a = walls[i];
+      const b = walls[j];
+      const touching =
+        distanceToSegment(a.start, b.start, b.end) <= JOIN_TOL ||
+        distanceToSegment(a.end, b.start, b.end) <= JOIN_TOL ||
+        distanceToSegment(b.start, a.start, a.end) <= JOIN_TOL ||
+        distanceToSegment(b.end, a.start, a.end) <= JOIN_TOL;
+      if (!touching) continue;
+      const ra = find(i);
+      const rb = find(j);
+      if (ra !== rb) parent[ra] = rb;
+    }
+  }
+  const groups = new Map();
+  walls.forEach((w, i) => {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(w);
+  });
+  return [...groups.values()];
+}
+
+/**
+ * Groups that stand clear of the largest one.
+ *
+ * Disconnection alone is not a defect: a free-standing service core inside a
+ * hall touches no exterior wall and is perfectly ordinary. What is a defect is
+ * a group sitting entirely outside the main building's extents, which is what
+ * several buildings look like — the failure mode when several views of one
+ * building arrive as a single image.
+ */
+function detachedGroups(walls) {
+  const groups = connectedGroups(walls);
+  if (groups.length < 2) return 0;
+  const boxOf = (g) => bbox(g.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
+  const boxes = groups.map(boxOf).filter(Boolean);
+  if (boxes.length < 2) return 0;
+  let main = boxes[0];
+  for (const b of boxes) {
+    const area = (b.maxX - b.minX) * (b.maxZ - b.minZ);
+    const mainArea = (main.maxX - main.minX) * (main.maxZ - main.minZ);
+    if (area > mainArea) main = b;
+  }
+  return boxes.filter(
+    (b) =>
+      b !== main &&
+      (b.minX > main.maxX ||
+        b.maxX < main.minX ||
+        b.minZ > main.maxZ ||
+        b.maxZ < main.minZ),
+  ).length;
+}
+
+function polygonArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return Math.abs(a) / 2;
+}
+
+/** Only vertices that actually turn, so collinear points do not inflate the count. */
+function cornerCount(poly) {
+  let corners = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[(i - 1 + poly.length) % poly.length];
+    const b = poly[i];
+    const c = poly[(i + 1) % poly.length];
+    const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
+    const len =
+      Math.hypot(b.x - a.x, b.z - a.z) * Math.hypot(c.x - b.x, c.z - b.z);
+    if (len > 0 && Math.abs(cross / len) > 0.05) corners++;
+  }
+  return corners;
+}
+
 function bbox(points) {
   if (points.length === 0) return null;
   const xs = points.map((p) => num(p.x));
@@ -221,6 +396,44 @@ export function runChecks(elements) {
   check("finite_coordinates", nonFinite, elements.length, (e) =>
     `${e.id} has a non-finite coordinate`);
 
+  // Shape, not just extents. The ground-floor outline is the one that says
+  // whether the model reproduced an articulated footprint or fell back to a box.
+  const groundWalls = levels.length
+    ? walls.filter((w) => num(w.level) === levels[0])
+    : walls;
+  // A walk that returns to its start having enclosed nothing — two walls in an
+  // L, traced out and back — is not an outline. Without the area floor the
+  // check passed on walls that enclose no building at all.
+  const traced = outerBoundary(groundWalls);
+  const tracedArea = traced ? polygonArea(traced) : 0;
+  const outline = tracedArea >= 1 ? traced : null;
+  const outlineArea = outline ? tracedArea : null;
+  // The box has to come from the outline itself, not from every ground wall.
+  // Measured against all walls, a detached second building or a single stray
+  // spur inflates the box and deflates the ratio, so a plain rectangle reads as
+  // highly articulated — and it fails in the dangerous direction, since a low
+  // fill satisfies a `maxFill` assertion.
+  const outlineBox = outline ? bbox(outline) : null;
+  const outlineBoxArea = outlineBox
+    ? (outlineBox.maxX - outlineBox.minX) * (outlineBox.maxZ - outlineBox.minZ)
+    : null;
+
+  // A footprint whose outline cannot be walked has walls that do not enclose
+  // anything, which wall_loop_closure can miss when every endpoint touches
+  // something but the pieces never form a ring.
+  const untraceable = groundWalls.length >= 3 && !outline ? ["outline"] : [];
+  check("footprint_traceable", untraceable, 1, () =>
+    "ground-floor walls do not trace a closed outline");
+
+  // Two closed boxes standing apart pass every other check — each endpoint
+  // meets another wall and each ring closes — while the outline walk silently
+  // measures only one of them. This is the failure mode when several views of
+  // a building arrive as one image and the model reads them as several
+  // buildings. A fixture with legitimate outbuildings can skip it.
+  const detached = detachedGroups(groundWalls);
+  check("footprint_single_component", detached > 0 ? [detached] : [], 1, (n) =>
+    `${n} wall group(s) stand clear of the main building, so the footprint describes only one of them`);
+
   const wallBox = bbox(walls.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
 
   return {
@@ -235,6 +448,12 @@ export function runChecks(elements) {
       stairs: stairs.length,
       columns: of(elements, "column").length,
       levels: levels.length,
+      footprintCorners: outline ? cornerCount(outline) : null,
+      footprintArea: outlineArea == null ? null : Number(outlineArea.toFixed(1)),
+      footprintFill:
+        outlineArea != null && outlineBoxArea
+          ? Number((outlineArea / outlineBoxArea).toFixed(2))
+          : null,
       footprint: wallBox
         ? [
             Number((wallBox.maxX - wallBox.minX).toFixed(2)),
@@ -258,4 +477,6 @@ export const CHECK_IDS = [
   "has_roof",
   "no_origin_cluster",
   "finite_coordinates",
+  "footprint_traceable",
+  "footprint_single_component",
 ];
