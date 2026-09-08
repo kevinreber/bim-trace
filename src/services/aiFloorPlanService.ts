@@ -294,6 +294,10 @@ export function validateAndFixElements(raw: Record<string, unknown>[]): {
           },
           level,
           material: readMaterial(item),
+          // The only element outside the door/window pass that uses rotation:
+          // it sets which axis the ridge runs along. Dropping it here silently
+          // undid the whole ridge-direction feature.
+          rotation: asNumber(item.rotation, 0),
         });
         break;
       }

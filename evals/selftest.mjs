@@ -109,6 +109,38 @@ if (!(lResult.stats.footprintFill < 0.9)) {
   problems.push(`L-shape should not fill its bounding box, got ${lResult.stats.footprintFill}`);
 }
 
+// Two closed boxes standing apart pass every other check — each endpoint meets
+// another wall and each ring closes — while the outline walk measures one of
+// them. This is what several views of one building read as several buildings
+// looks like, so it has to be caught explicitly.
+const TWO_BUILDINGS = [
+  wall(1, 0, 0, 4, 0), wall(2, 4, 0, 4, 4), wall(3, 4, 4, 0, 4), wall(4, 0, 4, 0, 0),
+  wall(5, 20, 0, 24, 0), wall(6, 24, 0, 24, 4), wall(7, 24, 4, 20, 4), wall(8, 20, 4, 20, 0),
+];
+const twoResult = runChecks(TWO_BUILDINGS);
+if (twoResult.checks.find((c) => c.id === "footprint_single_component")?.pass) {
+  problems.push("two detached buildings should have failed footprint_single_component");
+}
+if (twoResult.checks.find((c) => c.id === "wall_loop_closure")?.pass !== true) {
+  problems.push("two detached buildings close their loops, so wall_loop_closure should pass — the component check is what catches them");
+}
+// The fill ratio must come from the outline's own box: measured against every
+// wall, the far building inflates the box and the near one reads as highly
+// articulated, which would satisfy a maxFill assertion.
+if (twoResult.stats.footprintFill !== 1) {
+  problems.push(`detached building fill should be 1 from its own outline, got ${twoResult.stats.footprintFill}`);
+}
+
+// An interior partition meeting the middle of an exterior wall is ordinary
+// architecture and must not read as a detached group.
+const CORE = [
+  wall(1, 0, 0, 10, 0), wall(2, 10, 0, 10, 10), wall(3, 10, 10, 0, 10), wall(4, 0, 10, 0, 0),
+  wall(5, 3, 3, 7, 3), wall(6, 7, 3, 7, 7), wall(7, 7, 7, 3, 7), wall(8, 3, 7, 3, 3),
+];
+if (!runChecks(CORE).checks.find((c) => c.id === "footprint_single_component")?.pass) {
+  problems.push("a free-standing interior core should not read as a detached building");
+}
+
 const brokenResult = runChecks(BROKEN);
 const failedIds = new Set(brokenResult.checks.filter((c) => !c.pass).map((c) => c.id));
 for (const id of EXPECTED_TO_FAIL) {

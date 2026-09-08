@@ -196,9 +196,16 @@ export const BIM_OUTPUT_SCHEMA = {
           hostWallId: { type: ["string", "null"] },
           // Without this every element fell back to its type default, so a
           // dark tiled roof and a timber-clad gable both rendered in the same
-          // stock brown. Null means "use the type default".
+          // stock brown.
+          //
+          // "unknown" rather than null carries "use the type default". A null
+          // inside an enum, or an enum on a nullable type, is a construct this
+          // schema has never used and the API's acceptance of it cannot be
+          // tested without spending a real generation — and a schema the API
+          // rejects breaks every request, not just an edge case. This sticks to
+          // the plain string enum already proven by the `type` property above.
           material: {
-            type: ["string", "null"],
+            type: "string",
             enum: [
               "concrete",
               "wood",
@@ -208,7 +215,7 @@ export const BIM_OUTPUT_SCHEMA = {
               "stone",
               "drywall",
               "aluminum",
-              null,
+              "unknown",
             ],
           },
           params: {

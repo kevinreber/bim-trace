@@ -99,6 +99,7 @@ Tier 1 needs no ground truth — these are internal-consistency invariants:
 | `no_origin_cluster` | Elements collapsed to (0,0), the signature of coordinates that failed to parse upstream. |
 | `finite_coordinates` | NaN or Infinity in positions. |
 | `footprint_traceable` | Ground-floor walls that do not trace a closed outline — they touch each other but enclose nothing. |
+| `footprint_single_component` | A wall group standing clear of the main building, so the footprint describes only one of several. Every other check passes on two closed boxes. |
 
 Tier 2 runs only where `manifest.json` supplies an `expect` block. Keep it to
 cheap scalar labels — roughly two minutes of work per image, not hand-modelled

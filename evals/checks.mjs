@@ -127,6 +127,79 @@ function outerBoundary(walls) {
   return guard > 0 && poly.length >= 3 ? poly : null;
 }
 
+/**
+ * Number of disconnected wall groups.
+ *
+ * Uses the same adjacency rule as `wall_loop_closure`: a wall joins another
+ * when an endpoint lands anywhere on its span, not only at a shared endpoint.
+ * Endpoint-only adjacency counts an ordinary interior partition meeting the
+ * middle of an exterior wall as its own group, which is normal architecture
+ * rather than a defect.
+ */
+function connectedGroups(walls) {
+  const parent = walls.map((_, i) => i);
+  const find = (i) => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const a = walls[i];
+      const b = walls[j];
+      const touching =
+        distanceToSegment(a.start, b.start, b.end) <= JOIN_TOL ||
+        distanceToSegment(a.end, b.start, b.end) <= JOIN_TOL ||
+        distanceToSegment(b.start, a.start, a.end) <= JOIN_TOL ||
+        distanceToSegment(b.end, a.start, a.end) <= JOIN_TOL;
+      if (!touching) continue;
+      const ra = find(i);
+      const rb = find(j);
+      if (ra !== rb) parent[ra] = rb;
+    }
+  }
+  const groups = new Map();
+  walls.forEach((w, i) => {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(w);
+  });
+  return [...groups.values()];
+}
+
+/**
+ * Groups that stand clear of the largest one.
+ *
+ * Disconnection alone is not a defect: a free-standing service core inside a
+ * hall touches no exterior wall and is perfectly ordinary. What is a defect is
+ * a group sitting entirely outside the main building's extents, which is what
+ * several buildings look like — the failure mode when several views of one
+ * building arrive as a single image.
+ */
+function detachedGroups(walls) {
+  const groups = connectedGroups(walls);
+  if (groups.length < 2) return 0;
+  const boxOf = (g) => bbox(g.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
+  const boxes = groups.map(boxOf).filter(Boolean);
+  if (boxes.length < 2) return 0;
+  let main = boxes[0];
+  for (const b of boxes) {
+    const area = (b.maxX - b.minX) * (b.maxZ - b.minZ);
+    const mainArea = (main.maxX - main.minX) * (main.maxZ - main.minZ);
+    if (area > mainArea) main = b;
+  }
+  return boxes.filter(
+    (b) =>
+      b !== main &&
+      (b.minX > main.maxX ||
+        b.maxX < main.minX ||
+        b.minZ > main.maxZ ||
+        b.maxZ < main.minZ),
+  ).length;
+}
+
 function polygonArea(poly) {
   let a = 0;
   for (let i = 0; i < poly.length; i++) {
@@ -335,7 +408,12 @@ export function runChecks(elements) {
   const tracedArea = traced ? polygonArea(traced) : 0;
   const outline = tracedArea >= 1 ? traced : null;
   const outlineArea = outline ? tracedArea : null;
-  const outlineBox = bbox(groundWalls.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
+  // The box has to come from the outline itself, not from every ground wall.
+  // Measured against all walls, a detached second building or a single stray
+  // spur inflates the box and deflates the ratio, so a plain rectangle reads as
+  // highly articulated — and it fails in the dangerous direction, since a low
+  // fill satisfies a `maxFill` assertion.
+  const outlineBox = outline ? bbox(outline) : null;
   const outlineBoxArea = outlineBox
     ? (outlineBox.maxX - outlineBox.minX) * (outlineBox.maxZ - outlineBox.minZ)
     : null;
@@ -346,6 +424,15 @@ export function runChecks(elements) {
   const untraceable = groundWalls.length >= 3 && !outline ? ["outline"] : [];
   check("footprint_traceable", untraceable, 1, () =>
     "ground-floor walls do not trace a closed outline");
+
+  // Two closed boxes standing apart pass every other check — each endpoint
+  // meets another wall and each ring closes — while the outline walk silently
+  // measures only one of them. This is the failure mode when several views of
+  // a building arrive as one image and the model reads them as several
+  // buildings. A fixture with legitimate outbuildings can skip it.
+  const detached = detachedGroups(groundWalls);
+  check("footprint_single_component", detached > 0 ? [detached] : [], 1, (n) =>
+    `${n} wall group(s) stand clear of the main building, so the footprint describes only one of them`);
 
   const wallBox = bbox(walls.flatMap((w) => [w.start ?? {}, w.end ?? {}]));
 
@@ -391,4 +478,5 @@ export const CHECK_IDS = [
   "no_origin_cluster",
   "finite_coordinates",
   "footprint_traceable",
+  "footprint_single_component",
 ];

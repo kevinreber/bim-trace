@@ -65,7 +65,7 @@ Each element has this shape:
 
 Use these default dimensions unless the image clearly shows different proportions.
 
-Every element also carries "material" — one of concrete, wood, steel, glass, brick, stone, drywall, aluminum, or null to use the type default. See Material Rules below.
+Every element also carries "material" — one of concrete, wood, steel, glass, brick, stone, drywall, aluminum, or "unknown" to use the type default. See Material Rules below.
 
 ## Coordinate System
 
@@ -135,8 +135,8 @@ Every element also carries "material" — one of concrete, wood, steel, glass, b
 
 - Set "material" on every element to what you can actually see: one of concrete, wood, steel, glass, brick, stone, drywall, aluminum.
 - Read it from the image rather than assuming. Dark roof tiles are "stone" or "concrete", not the default. Timber cladding is "wood". Render or stucco is "concrete". Exposed brickwork is "brick". Glazing and curtain walls are "glass". Metal railings and gutters are "steel" or "aluminum".
-- Use null only when a surface is genuinely not visible, such as an interior partition inferred from the layout.
-- For a MEASURED DRAWING, use null unless the drawing labels or hatches a material. Do not guess a material from a line drawing.
+- Use "unknown" only when a surface is genuinely not visible, such as an interior partition inferred from the layout. It means "use the default for this element type".
+- For a MEASURED DRAWING, use "unknown" unless the drawing labels or hatches a material. Do not guess a material from a line drawing.
 
 ## Stair Rules
 

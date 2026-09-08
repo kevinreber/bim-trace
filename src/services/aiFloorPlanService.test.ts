@@ -262,4 +262,67 @@ describe("validateAndFixElements — new element types and materials", () => {
     ]);
     expect(elements[0].material).toBeUndefined();
   });
+
+  // The schema carries "unknown" rather than null, because a null inside an
+  // enum is a construct whose acceptance by the API has never been tested here.
+  it('treats the "unknown" sentinel as no choice', () => {
+    const { elements } = validateAndFixElements([
+      { ...wallItem, material: "unknown" },
+    ]);
+    expect(elements[0].material).toBeUndefined();
+  });
+
+  // Doors and windows are built in a different pass from walls and structural
+  // elements, so their material passthrough is a separate code path.
+  it("carries the material through onto doors and windows", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "d1",
+        type: "door",
+        name: "Front Door",
+        start: { x: 3, z: 0 },
+        end: { x: 3, z: 0 },
+        params: { height: 2.1, width: 0.9 },
+        level: 0,
+        hostWallId: "w1",
+        material: "wood",
+      },
+      {
+        id: "win1",
+        type: "window",
+        name: "Living Room Window",
+        start: { x: 5, z: 0 },
+        end: { x: 5, z: 0 },
+        params: { height: 1.2, width: 1, sillHeight: 0.9 },
+        level: 0,
+        hostWallId: "w1",
+        material: "glass",
+      },
+    ]);
+    expect(elements.find((e) => e.type === "door")?.material).toBe("wood");
+    expect(elements.find((e) => e.type === "window")?.material).toBe("glass");
+  });
+
+  // Roofs go through the third pass and are the only element carrying a ridge
+  // rotation, which nothing else in the validator touches.
+  it("carries material and ridge rotation through onto a roof", () => {
+    const { elements } = validateAndFixElements([
+      wallItem,
+      {
+        id: "r1",
+        type: "roof",
+        name: "Main Gable Roof",
+        start: { x: 0, z: 0 },
+        end: { x: 6, z: 4 },
+        params: { height: 2.5, thickness: 0.2, overhang: 0.3 },
+        level: 3,
+        rotation: 1.5708,
+        material: "stone",
+      },
+    ]);
+    const roof = elements.find((e) => e.type === "roof");
+    expect(roof?.material).toBe("stone");
+    expect(roof?.rotation).toBeCloseTo(1.5708);
+  });
 });
